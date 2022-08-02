@@ -11,6 +11,4 @@ dependencies = [
 
 [[package]]
 name = "paco"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "badd73aee4179ad7f0bf1206e2ef89e1985c578b7752c0221e514a7e199dbe16"
+version = "0.1.3"
