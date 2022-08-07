@@ -1,10 +1,14 @@
 use paco::{
-    all_of_input, concat, exact_string, lift, many, many1, sequence, skip_whitespace, string_while,
-    strip_whitespace, ParseState, Parser, Progress,
+    all_of_input, bracket, choice, concat, exact_string, lift, many, sequence, skip_whitespace,
+    string_while, strip_whitespace, ParseState, Parser, Progress,
 };
 
 fn is_ident_starter(ch: char) -> bool {
     ch.is_ascii_alphabetic() || ch == '_'
+}
+
+fn is_var_ident_starter(ch: char) -> bool {
+    (ch.is_ascii_alphabetic() && ch.is_lowercase()) || ch == '_'
 }
 
 fn is_ident_char(ch: char) -> bool {
@@ -146,16 +150,42 @@ fn main() {
 }
 
 fn get_ast_parser() -> impl Parser<char, Vec<FnDecl>> {
-    let _identifier = skip_whitespace(lift(
+    let identifier = skip_whitespace(lift(
         concat,
-        sequence!(string_while(is_ident_starter), string_while(is_ident_char)),
+        sequence!(
+            string_while(is_var_ident_starter),
+            string_while(is_ident_char)
+        ),
     ));
-    let predicate_parser = strip_whitespace(exact_string("predicate"));
+    let int = |s: String| -> i64 {
+        let i = s.parse::<i64>().unwrap();
+        i
+    };
+    /*
+     *
+    Irrefutable(Id),
+    Integer(i64),
+    String(String),
+    Tuple { dims: Vec<Box<Predicate>> },
+    */
+    let tuple_predicate_parser = strip_whitespace(bracket(
+        '(',
+        ')',
+        |ps: ParseState<char>| -> Progress<char, Vec<Box<Predicate>>> {
+            Progress::Parsed(ps, Vec::new())
+        },
+    ));
+    let predicate_parser = strip_whitespace(choice!(
+        lift(Predicate::Irrefutable.Id, identifier),
+        lift(Predicate::Integer, int),
+    ));
+
     let callsite_parser = strip_whitespace(exact_string("callsite"));
 
-    let def_parser = lift4ac(
+    let def_parser = lift5abd(
         ast_func,
-        many1(predicate_parser),
+        identifier,
+        predicate_parser,
         token("="),
         callsite_parser,
         token(";"),
