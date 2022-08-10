@@ -1,3 +1,5 @@
+use std::fmt;
+use std::fmt::Formatter;
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 pub enum Lexeme<'a> {
@@ -26,24 +28,57 @@ pub struct Location<'a> {
     col: i32,
 }
 
+impl<'a> std::fmt::Display for Location<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}:{}", self.filename, self.line, self.col)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 pub struct Token<'a> {
-    location: Location<'a>,
-    lexeme: Lexeme<'a>,
+    pub location: Location<'a>,
+    pub lexeme: Lexeme<'a>,
 }
 
+impl<'a> std::fmt::Display for Token<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.lexeme)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LexState<'a> {
+    Started,
+    Read(Token<'a>),
+    EOF,
+}
+
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct Lexer<'a> {
     contents: &'a str,
     location: Location<'a>,
+    state: LexState<'a>,
 }
 
-impl<'a> Iterator for Lexer<'a> {
-    type Item = Token<'a>;
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'a> Lexer<'a> {
+    pub fn peek(self) -> (Option<Token<'a>>, Self) {
+        match self.state {
+            LexState::Started => (None, self),
+            LexState::Read(ref token) => (Some(token.clone()), self),
+            LexState::EOF => (None, self),
+        }
+    }
+
+    pub fn advance(mut self) -> Self {
+        if self.state == LexState::EOF {
+            return self;
+        }
+
         if self.contents.len() == 0 {
-            return None;
+            self.state = LexState::EOF;
+            return self;
         }
 
         enum LS {
@@ -64,7 +99,8 @@ impl<'a> Iterator for Lexer<'a> {
             match ls {
                 LS::Start => {
                     if ch == '\0' {
-                        return None;
+                        self.state = LexState::EOF;
+                        return self;
                     } else if ch.is_whitespace() {
                     } else if ch.is_digit(10) {
                         ls = LS::Digits;
@@ -107,10 +143,11 @@ impl<'a> Iterator for Lexer<'a> {
                         count += ch.len_utf8();
                     } else {
                         self.contents = &self.contents[count..];
-                        return Some(Token {
+                        self.state = LexState::Read(Token {
                             location: start_location,
                             lexeme: Lexeme::Identifier(&lexeme_start[..count - lexeme_start_index]),
                         });
+                        return self;
                     }
                 }
                 LS::Digits => {
@@ -118,7 +155,7 @@ impl<'a> Iterator for Lexer<'a> {
                         count += ch.len_utf8();
                     } else {
                         self.contents = &self.contents[count..];
-                        return Some(Token {
+                        self.state = LexState::Read(Token {
                             location: start_location,
                             lexeme: Lexeme::Unsigned(
                                 lexeme_start[..count - lexeme_start_index]
@@ -126,25 +163,21 @@ impl<'a> Iterator for Lexer<'a> {
                                     .unwrap(),
                             ),
                         });
+                        return self;
                     }
                 }
             }
         }
     }
 
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, Some(self.contents.len()))
-    }
-}
-
-impl<'a> Lexer<'a> {
-    fn _advance(&mut self, ch: char, mut count: usize, lexeme: Lexeme<'a>) -> Option<Token<'a>> {
+    fn _advance(mut self, ch: char, mut count: usize, lexeme: Lexeme<'a>) -> Self {
         count += ch.len_utf8();
         self.contents = &self.contents[count..];
-        return Some(Token {
+        self.state = LexState::Read(Token {
             location: self.location.clone(),
             lexeme: lexeme,
         });
+        self
     }
 
     pub fn new<T>(filename: T, input: T) -> Self
@@ -158,6 +191,7 @@ impl<'a> Lexer<'a> {
                 line: 1,
                 col: 0,
             },
+            state: LexState::Started,
         }
     }
 

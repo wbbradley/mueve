@@ -1,10 +1,12 @@
+use std::fmt;
 mod lexer;
-use lexer::Lexer;
+use lexer::{Lexeme, Lexer, Location, Token};
 
-#[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub struct FnDecl {
-    name: String,
+#[derive(Clone, Debug)]
+pub struct Identifier<'a> {
+    name: &'a str,
+    location: Location<'a>,
 }
 
 #[allow(dead_code)]
@@ -65,18 +67,105 @@ fn mkcallsite(_exprs: Vec<Expr>) -> Expr {
 }
 
 #[allow(dead_code)]
-pub struct Decl {
-    name: Id,
-    pattern: Vec<Predicate>,
-    body: Expr,
+#[derive(Debug, Clone)]
+pub struct Decl<'a> {
+    id: Identifier<'a>,
+    // pattern: Vec<Predicate>,
+    // body: Expr,
+}
+
+#[derive(Debug)]
+pub enum ErrorLevel {
+    Info,
+    Warning,
+    Error,
+}
+
+impl std::fmt::Display for ErrorLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ErrorLevel::Info => "info",
+                ErrorLevel::Warning => "warning",
+                ErrorLevel::Error => "error",
+            }
+        )
+    }
+}
+
+#[derive(Debug)]
+pub struct ParseError<'a> {
+    location: Location<'a>,
+    level: ErrorLevel,
+    message: String,
+}
+
+impl<'a> std::error::Error for ParseError<'a> {}
+
+impl<'a> ParseError<'a> {
+    pub fn unexpected(token: Token<'a>, expected: &str) -> ParseError<'a> {
+        ParseError {
+            location: token.location.clone(),
+            level: ErrorLevel::Error,
+            message: format!("unexpected token ({token}) found. expected {expected}"),
+        }
+    }
+}
+
+impl<'a> fmt::Display for ParseError<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}: {}: {}", self.location, self.level, self.message)
+    }
+}
+
+fn parse_id(lexer: Lexer) -> Result<(Option<Identifier>, Lexer), ParseError> {
+    match lexer.peek() {
+        (None, lexer) => Ok((None, lexer.advance())),
+        (
+            Some(Token {
+                location,
+                lexeme: Lexeme::Identifier(name),
+            }),
+            lexer,
+        ) => Ok((
+            Some(Identifier {
+                name: name,
+                location: location.clone(),
+            }),
+            lexer.advance(),
+        )),
+        (Some(token), _) => Err(ParseError::unexpected(token, "an identifier")),
+    }
+}
+
+fn parse_decl(lexer: Lexer) -> Result<(Option<Decl>, Lexer), ParseError> {
+    match parse_id(lexer)? {
+        (Some(id), lexer) => Ok((Some(Decl { id: id }), lexer)),
+        (None, lexer) => Ok((None, lexer)),
+    }
+}
+
+fn parse_decls(mut lexer: Lexer) -> Result<(Vec<Decl>, Lexer), ParseError> {
+    let mut decls = Vec::new();
+    loop {
+        match parse_decl(lexer) {
+            Ok((Some(decl), new_lexer)) => {
+                lexer = new_lexer;
+                decls.push(decl);
+            }
+            Ok((None, lexer)) => return Ok((decls, lexer)),
+            Err(err) => return Err(err),
+        }
+    }
 }
 
 fn main() {
     let input = "123454 14 \n pi.(} &";
     let lexer = Lexer::new("raw-text", &input);
-    for token in lexer {
-        println!("{:?}", token);
-    }
+    let decls = parse_decls(lexer).unwrap();
+    println!("{decls:?}");
 }
 
 #[cfg(test)]
