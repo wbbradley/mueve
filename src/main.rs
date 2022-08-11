@@ -120,28 +120,28 @@ impl<'a> fmt::Display for ParseError<'a> {
     }
 }
 
-fn parse_id(lexer: Lexer) -> Result<(Option<Identifier>, Lexer), ParseError> {
+fn maybe_id(lexer: Lexer) -> (Option<Identifier>, Lexer) {
     match lexer.peek() {
-        (None, lexer) => Ok((None, lexer.advance())),
+        (None, lexer) => (None, lexer.advance()),
         (
             Some(Token {
                 location,
                 lexeme: Lexeme::Identifier(name),
             }),
             lexer,
-        ) => Ok((
+        ) => (
             Some(Identifier {
                 name: name,
                 location: location.clone(),
             }),
             lexer.advance(),
-        )),
-        (Some(token), _) => Err(ParseError::unexpected(token, "an identifier")),
+        ),
+        (Some(_), lexer) => (None, lexer),
     }
 }
 
 fn parse_decl(lexer: Lexer) -> Result<(Option<Decl>, Lexer), ParseError> {
-    match parse_id(lexer)? {
+    match maybe_id(lexer) {
         (Some(id), lexer) => Ok((Some(Decl { id: id }), lexer)),
         (None, lexer) => Ok((None, lexer)),
     }
@@ -162,10 +162,10 @@ fn parse_decls(mut lexer: Lexer) -> Result<(Vec<Decl>, Lexer), ParseError> {
 }
 
 fn main() {
-    let input = "123454 14 \n pi.(} &";
+    let input = "fan 123454 14 \n pi.(} &";
     let lexer = Lexer::new("raw-text", &input);
-    let decls = parse_decls(lexer).unwrap();
-    println!("{decls:?}");
+    let (decls, _) = parse_decls(lexer.advance()).unwrap();
+    println!("{:?}", decls);
 }
 
 #[cfg(test)]
