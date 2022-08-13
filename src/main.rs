@@ -40,14 +40,20 @@ pub enum Expr<'a> {
         param_names: Vec<Identifier<'a>>,
         body: Box<Expr<'a>>,
     },
+    Let {
+        location: Location<'a>,
+        binding: Identifier<'a>,
+        value: Box<Expr<'a>>,
+        body: Box<Expr<'a>>,
+    },
     LiteralInteger {
         value: i64,
     },
     LiteralString {
         value: String,
     },
-    Id {
-        name: String,
+    Symbol {
+        id: Identifier<'a>,
     },
     Match {
         subject: Box<Expr<'a>>,
@@ -60,16 +66,6 @@ pub enum Expr<'a> {
     TupleCtor {
         dims: Vec<Box<Expr<'a>>>,
     },
-}
-
-#[allow(dead_code)]
-fn mkcallsite(_exprs: Vec<Expr>) -> Expr {
-    Expr::Lambda {
-        param_names: Vec::new(),
-        body: Box::new(Expr::Id {
-            name: "foo".to_string(),
-        }),
-    }
 }
 
 #[allow(dead_code)]
@@ -142,7 +138,7 @@ fn parse_predicate(lexer: Lexer) -> Result<(Option<Predicate>, Lexer), ParseErro
                 })),
                 lexer.advance(),
             )),
-            Lexeme::LParen => parse_tuple_predicate(token.location, lexer),
+            Lexeme::Operator("(") => parse_tuple_predicate(token.location, lexer),
             _ => Ok((None, lexer)),
         },
         (None, lexer) => {
@@ -168,8 +164,91 @@ fn parse_predicates(mut lexer: Lexer) -> Result<(Vec<Predicate>, Lexer), ParseEr
     }
 }
 
+fn parse_identifier(lexer: Lexer) -> Result<(Identifier, Lexer), ParseError> {
+    match lexer.peek() {
+        (
+            Some(Token {
+                location,
+                lexeme: Lexeme::Identifier(name),
+            }),
+            lexer,
+        ) => Ok((
+            Identifier {
+                name: name,
+                location: location,
+            },
+            lexer.advance(),
+        )),
+        (_, lexer) => Err(ParseError::error(
+            lexer.location,
+            "expected an identifier here",
+        )),
+    }
+}
+
+fn parse_let_expr<'a>(
+    location: Location<'a>,
+    lexer: Lexer<'a>,
+) -> Result<(Option<Box<Expr<'a>>>, Lexer<'a>), ParseError<'a>> {
+    let (binding_id, lexer) = parse_identifier(lexer)?;
+    let lexer = lexer.chomp(Lexeme::Operator("="))?;
+    let (binding_value, lexer) = parse_callsite(lexer)?;
+    let lexer = lexer.chomp(Lexeme::Operator(":"))?;
+    let (in_body, lexer) = parse_callsite(lexer)?;
+    Ok((
+        Some(
+            Expr::Let {
+                location: location,
+                binding: binding_id,
+                value: binding_value.into(),
+                body: in_body.into(),
+            }
+            .into(),
+        ),
+        lexer,
+    ))
+}
+
 fn parse_callsite_term(lexer: Lexer) -> Result<(Option<Box<Expr>>, Lexer), ParseError> {
-    Err(ParseError::not_impl(lexer.location))
+    match lexer.peek() {
+        (None, lexer) => Ok((None, lexer.advance())),
+        (
+            Some(Token {
+                location,
+                lexeme: Lexeme::Identifier(name),
+            }),
+            lexer,
+        ) => {
+            if name == "let" {
+                parse_let_expr(lexer.location.clone(), lexer.advance())
+            } else {
+                Ok((
+                    Some(
+                        Expr::Symbol {
+                            id: Identifier {
+                                name: name,
+                                location: location,
+                            },
+                        }
+                        .into(),
+                    ),
+                    lexer.advance(),
+                ))
+            }
+        }
+        (_, lexer) => Err(ParseError::not_impl(lexer.location)),
+    }
+    /*
+    parse_string_literal,
+    parse_parentheses,
+    parse_let_expr,
+    parse_do_notation,
+    parse_if_then,
+    parse_match,
+    parse_number,
+    parse_identifier,
+    parse_ctor,
+    */
 }
 fn parse_callsite(lexer: Lexer) -> Result<(Expr, Lexer), ParseError> {
     let (maybe_function, lexer) = parse_callsite_term(lexer)?;
@@ -204,7 +283,7 @@ fn parse_decl(lexer: Lexer) -> Result<(Option<Decl>, Lexer), ParseError> {
         (None, lexer) => return Ok((None, lexer)),
     };
     let (predicates, lexer) = parse_predicates(lexer)?;
-    let lexer = lexer.chomp(Lexeme::Assign)?;
+    let lexer = lexer.chomp(Lexeme::Operator("="))?;
     let (expr, lexer) = parse_callsite(lexer)?;
     Ok((
         Some({
@@ -238,7 +317,7 @@ where
 }
 
 fn main() {
-    let input = "fan 123454 14 \n pi=(} &";
+    let input = "fan 123454 14 pi = + x 3";
     println!("parsing '{}'...", input);
     let lexer = Lexer::new("raw-text", &input);
     match parse_many(parse_decl, lexer.advance()) {

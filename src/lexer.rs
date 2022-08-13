@@ -10,17 +10,7 @@ pub enum Lexeme<'a> {
     Identifier(&'a str),
     QuotedString(&'a str),
     Operator(&'a str),
-    LParen,
-    RParen,
-    LSquare,
-    RSquare,
-    LCurly,
-    RCurly,
-    Colon,
     Semicolon,
-    Dot,
-    Ampersand,
-    Assign,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,12 +29,21 @@ pub struct Lexer<'a> {
 }
 
 fn is_operator_char(ch: char) -> bool {
-    return ch == '>'
+    return ch == '.'
+        || ch == '='
+        || ch == ']'
+        || ch == '['
+        || ch == '('
+        || ch == ')'
+        || ch == '{'
+        || ch == '}'
+        || ch == '>'
         || ch == '<'
         || ch == '-'
         || ch == '+'
         || ch == '!'
         || ch == '@'
+        || ch == ':'
         || ch == '$'
         || ch == '%'
         || ch == '^'
@@ -132,28 +131,13 @@ impl<'a> Lexer<'a> {
                         lexeme_start_index = count;
                         lexeme_start = &self.contents[count..];
                         start_location = self.location.clone();
-                    } else if ch == ':' {
-                        return self._advance(ch, count, Lexeme::Colon);
+                    } else if is_operator_char(ch) {
+                        ls = LS::Operator;
+                        lexeme_start_index = count;
+                        lexeme_start = &self.contents[count..];
+                        start_location = self.location.clone();
                     } else if ch == ';' {
                         return self._advance(ch, count, Lexeme::Semicolon);
-                    } else if ch == '&' {
-                        return self._advance(ch, count, Lexeme::Ampersand);
-                    } else if ch == '=' {
-                        return self._advance(ch, count, Lexeme::Assign);
-                    } else if ch == '.' {
-                        return self._advance(ch, count, Lexeme::Dot);
-                    } else if ch == '(' {
-                        return self._advance(ch, count, Lexeme::LParen);
-                    } else if ch == ')' {
-                        return self._advance(ch, count, Lexeme::RParen);
-                    } else if ch == '[' {
-                        return self._advance(ch, count, Lexeme::LSquare);
-                    } else if ch == ']' {
-                        return self._advance(ch, count, Lexeme::RSquare);
-                    } else if ch == '{' {
-                        return self._advance(ch, count, Lexeme::LCurly);
-                    } else if ch == '}' {
-                        return self._advance(ch, count, Lexeme::RCurly);
                     } else {
                         assert!(false, "could not figure out what do do with '{ch}'!");
                     }
@@ -179,7 +163,7 @@ impl<'a> Lexer<'a> {
                         self.contents = &self.contents[count..];
                         self.state = LexState::Read(Token {
                             location: start_location,
-                            lexeme: Lexeme::Identifier(&lexeme_start[..count - lexeme_start_index]),
+                            lexeme: Lexeme::Operator(&lexeme_start[..count - lexeme_start_index]),
                         });
                         return self;
                     }
