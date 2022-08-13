@@ -1,5 +1,7 @@
-use std::fmt;
-use std::fmt::Formatter;
+use crate::error::ParseError;
+use crate::location::Location;
+use crate::token::Token;
+
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 pub enum Lexeme<'a> {
@@ -18,33 +20,7 @@ pub enum Lexeme<'a> {
     Semicolon,
     Dot,
     Ampersand,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
-pub struct Location<'a> {
-    filename: &'a str,
-    line: i32,
-    col: i32,
-}
-
-impl<'a> std::fmt::Display for Location<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}:{}", self.filename, self.line, self.col)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
-pub struct Token<'a> {
-    pub location: Location<'a>,
-    pub lexeme: Lexeme<'a>,
-}
-
-impl<'a> std::fmt::Display for Token<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.lexeme)
-    }
+    Assign,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -58,7 +34,7 @@ pub enum LexState<'a> {
 #[allow(dead_code)]
 pub struct Lexer<'a> {
     contents: &'a str,
-    location: Location<'a>,
+    pub location: Location<'a>,
     state: LexState<'a>,
 }
 
@@ -68,6 +44,23 @@ impl<'a> Lexer<'a> {
             LexState::Started => (None, self),
             LexState::Read(ref token) => (Some(token.clone()), self),
             LexState::EOF => (None, self),
+        }
+    }
+
+    pub fn chomp(self, expect_lexeme: Lexeme<'a>) -> Result<Self, ParseError<'a>> {
+        match self.state {
+            LexState::Started => Err(ParseError::error(self.location, "lexer was not started!")),
+            LexState::Read(ref token) => {
+                if token.lexeme == expect_lexeme {
+                    Ok(self.advance())
+                } else {
+                    Err(ParseError::unexpected(token.clone(), "bo"))
+                }
+            }
+            LexState::EOF => Err(ParseError::error(
+                self.location,
+                format!("hit EOF but expected {:?}", expect_lexeme),
+            )),
         }
     }
 
@@ -118,6 +111,8 @@ impl<'a> Lexer<'a> {
                         return self._advance(ch, count, Lexeme::Semicolon);
                     } else if ch == '&' {
                         return self._advance(ch, count, Lexeme::Ampersand);
+                    } else if ch == '=' {
+                        return self._advance(ch, count, Lexeme::Assign);
                     } else if ch == '.' {
                         return self._advance(ch, count, Lexeme::Dot);
                     } else if ch == '(' {

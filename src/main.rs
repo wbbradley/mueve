@@ -1,6 +1,14 @@
 use std::fmt;
+
+use crate::error::ParseError;
+use crate::lexer::{Lexeme, Lexer};
+use crate::location::Location;
+use crate::token::Token;
+
+mod error;
 mod lexer;
-use lexer::{Lexeme, Lexer, Location, Token};
+mod location;
+mod token;
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
@@ -95,31 +103,6 @@ impl std::fmt::Display for ErrorLevel {
     }
 }
 
-#[derive(Debug)]
-pub struct ParseError<'a> {
-    location: Location<'a>,
-    level: ErrorLevel,
-    message: String,
-}
-
-impl<'a> std::error::Error for ParseError<'a> {}
-
-impl<'a> ParseError<'a> {
-    pub fn unexpected(token: Token<'a>, expected: &str) -> ParseError<'a> {
-        ParseError {
-            location: token.location.clone(),
-            level: ErrorLevel::Error,
-            message: format!("unexpected token ({token}) found. expected {expected}"),
-        }
-    }
-}
-
-impl<'a> fmt::Display for ParseError<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}: {}: {}", self.location, self.level, self.message)
-    }
-}
-
 fn maybe_id(lexer: Lexer) -> (Option<Identifier>, Lexer) {
     match lexer.peek() {
         (None, lexer) => (None, lexer.advance()),
@@ -140,11 +123,32 @@ fn maybe_id(lexer: Lexer) -> (Option<Identifier>, Lexer) {
     }
 }
 
-fn parse_decl(lexer: Lexer) -> Result<(Option<Decl>, Lexer), ParseError> {
-    match maybe_id(lexer) {
-        (Some(id), lexer) => Ok((Some(Decl { id: id }), lexer)),
-        (None, lexer) => Ok((None, lexer)),
+fn parse_predicate(lexer: Lexer) -> Result<(Option<Predicate>, Lexer), ParseError> {
+    Err(ParseError::error(lexer.location, "foo"))
+}
+
+fn parse_predicates(mut lexer: Lexer) -> Result<(Vec<Predicate>, Lexer), ParseError> {
+    let mut predicates = Vec::new();
+    loop {
+        match parse_predicate(lexer) {
+            Ok((None, lexer)) => return Ok((predicates, lexer)),
+            Ok((Some(predicate), next_lexer)) => {
+                predicates.push(predicate);
+                lexer = next_lexer.advance();
+            }
+            Err(err) => return Err(err),
+        }
     }
+}
+
+fn parse_decl(lexer: Lexer) -> Result<(Option<Decl>, Lexer), ParseError> {
+    let (id, lexer) = match maybe_id(lexer) {
+        (Some(id), lexer) => (id, lexer),
+        (None, lexer) => return Ok((None, lexer)),
+    };
+    let (_predicates, next_lexer) = parse_predicates(lexer.advance())?;
+    let next_lexer = next_lexer.chomp(Lexeme::Assign)?;
+    Ok((Some(Decl { id: id }), next_lexer))
 }
 
 fn parse_decls(mut lexer: Lexer) -> Result<(Vec<Decl>, Lexer), ParseError> {
@@ -164,8 +168,10 @@ fn parse_decls(mut lexer: Lexer) -> Result<(Vec<Decl>, Lexer), ParseError> {
 fn main() {
     let input = "fan 123454 14 \n pi.(} &";
     let lexer = Lexer::new("raw-text", &input);
-    let (decls, _) = parse_decls(lexer.advance()).unwrap();
-    println!("{:?}", decls);
+    match parse_decls(lexer.advance()) {
+        Ok((decls, _)) => println!("Ok {:?}", decls),
+        Err(err) => println!("{}", err),
+    }
 }
 
 #[cfg(test)]
