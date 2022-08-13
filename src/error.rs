@@ -45,6 +45,14 @@ impl<'a> ParseError<'a> {
         }
     }
 
+    pub fn not_impl(location: Location<'a>) -> ParseError<'a> {
+        ParseError {
+            location: location,
+            level: ErrorLevel::Error,
+            message: "parsing this is not implemented".to_string(),
+        }
+    }
+
     pub fn unexpected<T>(token: Token<'a>, expected: T) -> ParseError<'a>
     where
         T: fmt::Display,

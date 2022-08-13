@@ -26,12 +26,14 @@ enum Predicate<'a> {
     Tuple { dims: Vec<Box<Predicate<'a>>> },
 }
 
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct PatternExpr<'a> {
     predicate: Predicate<'a>,
     expr: Expr<'a>,
 }
 
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum Expr<'a> {
     Lambda {
@@ -75,7 +77,7 @@ fn mkcallsite(_exprs: Vec<Expr>) -> Expr {
 pub struct Decl<'a> {
     id: Identifier<'a>,
     predicates: Vec<Predicate<'a>>,
-    // body: Expr,
+    body: Expr<'a>,
 }
 
 #[derive(Debug)]
@@ -166,36 +168,71 @@ fn parse_predicates(mut lexer: Lexer) -> Result<(Vec<Predicate>, Lexer), ParseEr
     }
 }
 
+fn parse_callsite_term(lexer: Lexer) -> Result<(Option<Box<Expr>>, Lexer), ParseError> {
+    Err(ParseError::not_impl(lexer.location))
+}
+fn parse_callsite(lexer: Lexer) -> Result<(Expr, Lexer), ParseError> {
+    let (maybe_function, lexer) = parse_callsite_term(lexer)?;
+    match maybe_function {
+        Some(function) => match parse_many(parse_callsite_term, lexer)? {
+            (callsite_terms, lexer) => {
+                if callsite_terms.len() == 0 {
+                    return Err(ParseError::error(
+                        lexer.location,
+                        "missing an expression here?",
+                    ));
+                }
+                Ok((
+                    Expr::Callsite {
+                        function: function,
+                        arguments: callsite_terms,
+                    },
+                    lexer,
+                ))
+            }
+        },
+        None => Err(ParseError::error(
+            lexer.location,
+            "missing function callsite expression",
+        )),
+    }
+}
+
 fn parse_decl(lexer: Lexer) -> Result<(Option<Decl>, Lexer), ParseError> {
     let (id, lexer) = match maybe_id(lexer) {
         (Some(id), lexer) => (id, lexer),
         (None, lexer) => return Ok((None, lexer)),
     };
     let (predicates, lexer) = parse_predicates(lexer)?;
-    let next_lexer = lexer.chomp(Lexeme::Assign)?;
-
+    let lexer = lexer.chomp(Lexeme::Assign)?;
+    let (expr, lexer) = parse_callsite(lexer)?;
     Ok((
         Some({
             let decl = Decl {
                 id: id,
                 predicates: predicates,
+                body: expr,
             };
             println!("found decl {:?}", decl);
             decl
         }),
-        next_lexer,
+        lexer,
     ))
 }
 
-fn parse_decls(mut lexer: Lexer) -> Result<(Vec<Decl>, Lexer), ParseError> {
-    let mut decls = Vec::new();
+fn parse_many<'a, T, P>(parser: P, mut lexer: Lexer<'a>) -> Result<(Vec<T>, Lexer), ParseError>
+where
+    T: 'a,
+    P: Fn(Lexer<'a>) -> Result<(Option<T>, Lexer<'a>), ParseError>,
+{
+    let mut objects = Vec::new();
     loop {
-        match parse_decl(lexer)? {
-            (Some(decl), new_lexer) => {
+        match parser(lexer)? {
+            (Some(object), new_lexer) => {
                 lexer = new_lexer;
-                decls.push(decl);
+                objects.push(object);
             }
-            (None, lexer) => return Ok((decls, lexer)),
+            (None, lexer) => return Ok((objects, lexer)),
         }
     }
 }
@@ -204,7 +241,7 @@ fn main() {
     let input = "fan 123454 14 \n pi=(} &";
     println!("parsing '{}'...", input);
     let lexer = Lexer::new("raw-text", &input);
-    match parse_decls(lexer.advance()) {
+    match parse_many(parse_decl, lexer.advance()) {
         Ok((decls, _)) => println!("Parsed {:?}", decls),
         Err(err) => println!("{}", err),
     }
