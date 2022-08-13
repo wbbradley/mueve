@@ -18,29 +18,25 @@ pub struct Identifier<'a> {
 }
 
 #[allow(dead_code)]
-enum Predicate {
-    Irrefutable(Id),
+#[derive(Debug, Clone)]
+enum Predicate<'a> {
+    Irrefutable(Identifier<'a>),
     Integer(i64),
     String(String),
-    Tuple { dims: Vec<Box<Predicate>> },
+    Tuple { dims: Vec<Box<Predicate<'a>>> },
 }
 
 #[allow(dead_code)]
-pub struct PatternExpr {
-    predicate: Predicate,
-    expr: Expr,
+pub struct PatternExpr<'a> {
+    predicate: Predicate<'a>,
+    expr: Expr<'a>,
 }
 
 #[allow(dead_code)]
-pub struct Id {
-    name: String,
-}
-
-#[allow(dead_code)]
-pub enum Expr {
+pub enum Expr<'a> {
     Lambda {
-        param_names: Vec<Id>,
-        body: Box<Expr>,
+        param_names: Vec<Identifier<'a>>,
+        body: Box<Expr<'a>>,
     },
     LiteralInteger {
         value: i64,
@@ -52,15 +48,15 @@ pub enum Expr {
         name: String,
     },
     Match {
-        subject: Box<Expr>,
-        pattern_exprs: Vec<PatternExpr>,
+        subject: Box<Expr<'a>>,
+        pattern_exprs: Vec<PatternExpr<'a>>,
     },
     Callsite {
-        function: Box<Expr>,
-        arguments: Vec<Box<Expr>>,
+        function: Box<Expr<'a>>,
+        arguments: Vec<Box<Expr<'a>>>,
     },
     TupleCtor {
-        dims: Vec<Box<Expr>>,
+        dims: Vec<Box<Expr<'a>>>,
     },
 }
 
@@ -78,7 +74,7 @@ fn mkcallsite(_exprs: Vec<Expr>) -> Expr {
 #[derive(Debug, Clone)]
 pub struct Decl<'a> {
     id: Identifier<'a>,
-    // pattern: Vec<Predicate>,
+    predicates: Vec<Predicate<'a>>,
     // body: Expr,
 }
 
@@ -123,20 +119,49 @@ fn maybe_id(lexer: Lexer) -> (Option<Identifier>, Lexer) {
     }
 }
 
+fn parse_tuple_predicate<'a>(
+    location: Location<'a>,
+    _lexer: Lexer<'a>,
+) -> Result<(Option<Predicate<'a>>, Lexer<'a>), ParseError<'a>> {
+    return Err(ParseError::error(location, "failed to parse tuple"));
+}
+
 fn parse_predicate(lexer: Lexer) -> Result<(Option<Predicate>, Lexer), ParseError> {
-    Err(ParseError::error(lexer.location, "foo"))
+    match lexer.peek() {
+        (Some(token), lexer) => match token.lexeme {
+            Lexeme::Signed(value) => Ok((Some(Predicate::Integer(value)), lexer.advance())),
+            Lexeme::QuotedString(value) => {
+                Ok((Some(Predicate::String(value.to_string())), lexer.advance()))
+            }
+            Lexeme::Identifier(name) => Ok((
+                Some(Predicate::Irrefutable(Identifier {
+                    name: name,
+                    location: lexer.location.clone(),
+                })),
+                lexer.advance(),
+            )),
+            Lexeme::LParen => parse_tuple_predicate(token.location, lexer),
+            _ => Ok((None, lexer)),
+        },
+        (None, lexer) => {
+            return Err(ParseError::error(
+                lexer.location,
+                "missing token where a predicate was expected?",
+            ))
+        }
+    }
 }
 
 fn parse_predicates(mut lexer: Lexer) -> Result<(Vec<Predicate>, Lexer), ParseError> {
     let mut predicates = Vec::new();
     loop {
-        match parse_predicate(lexer) {
-            Ok((None, lexer)) => return Ok((predicates, lexer)),
-            Ok((Some(predicate), next_lexer)) => {
+        match parse_predicate(lexer)? {
+            (None, lexer) => return Ok((predicates, lexer)),
+            (Some(predicate), next_lexer) => {
+                println!("found predicate {:?}", predicate);
                 predicates.push(predicate);
-                lexer = next_lexer.advance();
+                lexer = next_lexer;
             }
-            Err(err) => return Err(err),
         }
     }
 }
@@ -146,30 +171,41 @@ fn parse_decl(lexer: Lexer) -> Result<(Option<Decl>, Lexer), ParseError> {
         (Some(id), lexer) => (id, lexer),
         (None, lexer) => return Ok((None, lexer)),
     };
-    let (_predicates, next_lexer) = parse_predicates(lexer.advance())?;
-    let next_lexer = next_lexer.chomp(Lexeme::Assign)?;
-    Ok((Some(Decl { id: id }), next_lexer))
+    let (predicates, lexer) = parse_predicates(lexer)?;
+    let next_lexer = lexer.chomp(Lexeme::Assign)?;
+
+    Ok((
+        Some({
+            let decl = Decl {
+                id: id,
+                predicates: predicates,
+            };
+            println!("found decl {:?}", decl);
+            decl
+        }),
+        next_lexer,
+    ))
 }
 
 fn parse_decls(mut lexer: Lexer) -> Result<(Vec<Decl>, Lexer), ParseError> {
     let mut decls = Vec::new();
     loop {
-        match parse_decl(lexer) {
-            Ok((Some(decl), new_lexer)) => {
+        match parse_decl(lexer)? {
+            (Some(decl), new_lexer) => {
                 lexer = new_lexer;
                 decls.push(decl);
             }
-            Ok((None, lexer)) => return Ok((decls, lexer)),
-            Err(err) => return Err(err),
+            (None, lexer) => return Ok((decls, lexer)),
         }
     }
 }
 
 fn main() {
-    let input = "fan 123454 14 \n pi.(} &";
+    let input = "fan 123454 14 \n pi=(} &";
+    println!("parsing '{}'...", input);
     let lexer = Lexer::new("raw-text", &input);
     match parse_decls(lexer.advance()) {
-        Ok((decls, _)) => println!("Ok {:?}", decls),
+        Ok((decls, _)) => println!("Parsed {:?}", decls),
         Err(err) => println!("{}", err),
     }
 }
