@@ -11,6 +11,12 @@ pub enum Lexeme<'a> {
     QuotedString(&'a str),
     Operator(&'a str),
     Semicolon,
+    LParen,
+    RParen,
+    LSquare,
+    RSquare,
+    LCurly,
+    RCurly,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -31,12 +37,6 @@ pub struct Lexer<'a> {
 fn is_operator_char(ch: char) -> bool {
     return ch == '.'
         || ch == '='
-        || ch == ']'
-        || ch == '['
-        || ch == '('
-        || ch == ')'
-        || ch == '{'
-        || ch == '}'
         || ch == '>'
         || ch == '<'
         || ch == '-'
@@ -108,10 +108,10 @@ impl<'a> Lexer<'a> {
         let mut ch_iter = self.contents.chars();
         loop {
             let ch: char = ch_iter.next().unwrap_or('\0');
-            self.update_loc(ch);
 
             match ls {
                 LS::Start => {
+                    self.update_loc(ch);
                     if ch == '\0' {
                         self.state = LexState::EOF;
                         return self;
@@ -136,6 +136,18 @@ impl<'a> Lexer<'a> {
                         lexeme_start_index = count;
                         lexeme_start = &self.contents[count..];
                         start_location = self.location.clone();
+                    } else if ch == '(' {
+                        return self._advance(ch, count, Lexeme::LParen);
+                    } else if ch == ')' {
+                        return self._advance(ch, count, Lexeme::RParen);
+                    } else if ch == '{' {
+                        return self._advance(ch, count, Lexeme::LCurly);
+                    } else if ch == '}' {
+                        return self._advance(ch, count, Lexeme::RCurly);
+                    } else if ch == '[' {
+                        return self._advance(ch, count, Lexeme::LSquare);
+                    } else if ch == ']' {
+                        return self._advance(ch, count, Lexeme::RSquare);
                     } else if ch == ';' {
                         return self._advance(ch, count, Lexeme::Semicolon);
                     } else {
@@ -146,6 +158,7 @@ impl<'a> Lexer<'a> {
                 }
                 LS::Identifier => {
                     if ch == '_' || ch.is_alphanumeric() {
+                        self.update_loc(ch);
                         count += ch.len_utf8();
                     } else {
                         self.contents = &self.contents[count..];
@@ -158,8 +171,10 @@ impl<'a> Lexer<'a> {
                 }
                 LS::Operator => {
                     if is_operator_char(ch) {
+                        self.update_loc(ch);
                         count += ch.len_utf8();
                     } else {
+                        // println!("{}: info: found a {:?}", &start_location, &lexeme_start[..count - lexeme_start_index]);
                         self.contents = &self.contents[count..];
                         self.state = LexState::Read(Token {
                             location: start_location,
@@ -170,9 +185,11 @@ impl<'a> Lexer<'a> {
                 }
                 LS::Minus => {
                     if ch.is_digit(10) {
+                        self.update_loc(ch);
                         count += ch.len_utf8();
                         ls = LS::Digits;
                     } else if is_operator_char(ch) {
+                        self.update_loc(ch);
                         count += ch.len_utf8();
                         ls = LS::Operator;
                     } else {
@@ -186,6 +203,7 @@ impl<'a> Lexer<'a> {
                 }
                 LS::Digits => {
                     if ch.is_digit(10) {
+                        self.update_loc(ch);
                         count += ch.len_utf8();
                     } else {
                         self.contents = &self.contents[count..];
@@ -214,9 +232,10 @@ impl<'a> Lexer<'a> {
         self
     }
 
-    pub fn new<T>(filename: T, input: T) -> Self
+    pub fn new<T, U>(filename: T, input: U) -> Self
     where
-        T: Into<&'a str>,
+        T: 'a + Into<&'a str>,
+        U: 'a + Into<&'a str>,
     {
         Lexer {
             contents: input.into(),
@@ -235,6 +254,7 @@ impl<'a> Lexer<'a> {
             self.location.line += 1;
             self.location.col = 0;
         } else {
+            // println!("found {}, bumping col", ch);
             self.location.col += 1;
         }
     }

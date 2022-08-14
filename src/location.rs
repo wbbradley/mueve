@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::fmt;
 use std::fmt::Formatter;
 
@@ -12,5 +13,16 @@ pub struct Location<'a> {
 impl<'a> std::fmt::Display for Location<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}:{}", self.filename, self.line, self.col)
+    }
+}
+
+pub trait HasLocation<'a> {
+    fn get_location(&self) -> &Location<'a>;
+}
+
+impl<'a, T: HasLocation<'a>> HasLocation<'a> for Box<T> {
+    fn get_location(&self) -> &Location<'a> {
+        let borrowed: &T = self.borrow();
+        borrowed.get_location()
     }
 }
