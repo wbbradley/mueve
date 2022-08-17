@@ -10,9 +10,34 @@ use crate::token::Token;
 #[derive(Debug, Clone)]
 enum Predicate<'a> {
     Irrefutable(Identifier<'a>),
-    Integer(i64),
-    String(String),
-    Tuple { dims: Vec<Box<Predicate<'a>>> },
+    Integer {
+        location: Location<'a>,
+        value: i64,
+    },
+    String {
+        location: Location<'a>,
+        value: String,
+    },
+    Ctor {
+        ctor_id: Identifier<'a>,
+        dims: Vec<Box<Predicate<'a>>>,
+    },
+    Tuple {
+        location: Location<'a>,
+        dims: Vec<Box<Predicate<'a>>>,
+    },
+}
+
+impl<'a> HasLocation<'a> for Predicate<'a> {
+    fn get_location(&self) -> &Location<'a> {
+        match self {
+            Predicate::Irrefutable(id) => id.get_location(),
+            Predicate::Integer { location, value: _ } => &location,
+            Predicate::String { location, value: _ } => &location,
+            Predicate::Ctor { ctor_id, dims: _ } => ctor_id.get_location(),
+            Predicate::Tuple { location, dims: _ } => &location,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -78,7 +103,7 @@ impl<'a> HasLocation<'a> for Expr<'a> {
             } => location,
             Expr::LiteralInteger { location, value: _ } => location,
             Expr::LiteralString { location, value: _ } => location,
-            Expr::Symbol { id } => &id.location,
+            Expr::Symbol { id } => id.get_location(),
             Expr::Match {
                 location,
                 subject: _,
@@ -97,13 +122,13 @@ impl<'a> HasLocation<'a> for Expr<'a> {
 #[derive(Debug, Clone)]
 pub struct Decl<'a> {
     id: Identifier<'a>,
-    predicates: Vec<Predicate<'a>>,
+    predicates: Vec<Box<Predicate<'a>>>,
     body: Expr<'a>,
 }
 
 impl<'a> HasLocation<'a> for Decl<'a> {
     fn get_location(&self) -> &Location<'a> {
-        &self.id.location
+        self.id.get_location()
     }
 }
 
@@ -129,6 +154,15 @@ impl std::fmt::Display for ErrorLevel {
     }
 }
 
+fn is_keyword(name: &str) -> bool {
+    name == "if"
+        || name == "then"
+        || name == "else"
+        || name == "do"
+        || name == "let"
+        || name == "in"
+}
+
 fn maybe_id(lexer: Lexer) -> (Option<Identifier>, Lexer) {
     match lexer.peek() {
         (None, lexer) => (None, lexer.advance()),
@@ -138,36 +172,103 @@ fn maybe_id(lexer: Lexer) -> (Option<Identifier>, Lexer) {
                 lexeme: Lexeme::Identifier(name),
             }),
             lexer,
-        ) => (
-            Some(Identifier::new(name, location.clone())),
-            lexer.advance(),
-        ),
+        ) => {
+            /* check for keywords */
+            if is_keyword(name) {
+                (None, lexer)
+            } else {
+                (Some(Identifier::new(name, location)), lexer.advance())
+            }
+        }
         (Some(_), lexer) => (None, lexer),
     }
 }
 
 fn parse_tuple_predicate<'a>(
     location: Location<'a>,
-    _lexer: Lexer<'a>,
+    mut lexer: Lexer<'a>,
 ) -> Result<(Option<Predicate<'a>>, Lexer<'a>), ParseError<'a>> {
-    return Err(ParseError::error(location, "failed to parse tuple"));
+    let mut predicates: Vec<Box<Predicate>> = Vec::new();
+    loop {
+        match parse_predicate(lexer)? {
+            (Some(predicate), new_lexer) => {
+                lexer = new_lexer;
+                if lexer.peek_matches(Lexeme::Comma) {
+                    println!("AA {:?}", predicate);
+                    predicates.push(Box::new(predicate));
+                    lexer = lexer.advance();
+                } else {
+                    lexer = lexer.chomp(Lexeme::RParen)?;
+                    if predicates.len() == 0 {
+                        return Ok((Some(predicate), lexer));
+                    } else if predicates.len() >= 1 {
+                        predicates.push(Box::new(predicate));
+                    }
+                    return Ok((
+                        Some(Predicate::Tuple {
+                            location,
+                            dims: predicates,
+                        }),
+                        lexer,
+                    ));
+                };
+            }
+            (None, new_lexer) => {
+                lexer = new_lexer;
+                break;
+            }
+        }
+    }
+    lexer = lexer.chomp(Lexeme::RParen)?;
+    Ok((
+        Some(Predicate::Tuple {
+            location,
+            dims: predicates,
+        }),
+        lexer,
+    ))
 }
 
 fn parse_predicate(lexer: Lexer) -> Result<(Option<Predicate>, Lexer), ParseError> {
     match lexer.peek() {
         (Some(token), lexer) => match token.lexeme {
-            Lexeme::Signed(value) => Ok((Some(Predicate::Integer(value)), lexer.advance())),
-            Lexeme::QuotedString(value) => {
-                Ok((Some(Predicate::String(value.to_string())), lexer.advance()))
-            }
-            Lexeme::Identifier(name) => Ok((
-                Some(Predicate::Irrefutable(Identifier::new(
-                    name,
-                    lexer.location.clone(),
-                ))),
+            Lexeme::Signed(value) => Ok((
+                Some(Predicate::Integer {
+                    location: token.location,
+                    value,
+                }),
                 lexer.advance(),
             )),
-            Lexeme::Operator("(") => parse_tuple_predicate(token.location, lexer),
+            Lexeme::QuotedString(value) => Ok((
+                Some(Predicate::String {
+                    location: token.location,
+                    value: value.to_string(),
+                }),
+                lexer.advance(),
+            )),
+            Lexeme::Identifier(name) => {
+                // Ctor
+                if name.chars().nth(0).unwrap().is_uppercase() {
+                    let ctor_id = Identifier::new(name, token.location);
+                    let (predicates, lexer) = parse_predicates(lexer.advance())?;
+                    Ok((
+                        Some(Predicate::Ctor {
+                            ctor_id,
+                            dims: predicates,
+                        }),
+                        lexer,
+                    ))
+                } else {
+                    Ok((
+                        Some(Predicate::Irrefutable(Identifier::new(
+                            name,
+                            lexer.location.clone(),
+                        ))),
+                        lexer.advance(),
+                    ))
+                }
+            }
+            Lexeme::LParen => parse_tuple_predicate(token.location, lexer.advance()),
             _ => Ok((None, lexer)),
         },
         (None, lexer) => {
@@ -179,14 +280,18 @@ fn parse_predicate(lexer: Lexer) -> Result<(Option<Predicate>, Lexer), ParseErro
     }
 }
 
-fn parse_predicates(mut lexer: Lexer) -> Result<(Vec<Predicate>, Lexer), ParseError> {
+fn parse_predicates(mut lexer: Lexer) -> Result<(Vec<Box<Predicate>>, Lexer), ParseError> {
     let mut predicates = Vec::new();
     loop {
         match parse_predicate(lexer)? {
             (None, lexer) => return Ok((predicates, lexer)),
             (Some(predicate), next_lexer) => {
-                println!("found predicate {:?}", predicate);
-                predicates.push(predicate);
+                println!(
+                    "{}: found predicate {:?}",
+                    predicate.get_location(),
+                    predicate
+                );
+                predicates.push(Box::new(predicate));
                 lexer = next_lexer;
             }
         }
@@ -216,7 +321,7 @@ fn parse_let_expr<'a>(
     let (binding_id, lexer) = parse_identifier(lexer)?;
     let lexer = lexer.chomp(Lexeme::Operator("="))?;
     let (binding_value, lexer) = parse_callsite(lexer)?;
-    let lexer = lexer.chomp(Lexeme::Operator(":"))?;
+    let lexer = lexer.chomp(Lexeme::Identifier("in"))?;
     let (in_body, lexer) = parse_callsite(lexer)?;
     Ok((
         Some(
@@ -235,82 +340,44 @@ fn parse_let_expr<'a>(
 fn parse_callsite_term(lexer: Lexer) -> Result<(Option<Box<Expr>>, Lexer), ParseError> {
     match lexer.peek() {
         (None, lexer) => Ok((None, lexer.advance())),
-        (
+        (Some(Token { location, lexeme }), lexer) => match lexeme {
             // A symbol reference.
-            Some(Token {
-                location,
-                lexeme: Lexeme::Identifier(name),
-            }),
-            lexer,
-        ) => {
-            if name == "let" {
-                parse_let_expr(lexer.location.clone(), lexer.advance())
-            } else {
-                Ok((
-                    Some(
-                        Expr::Symbol {
-                            id: Identifier::new(name, location),
-                        }
-                        .into(),
-                    ),
-                    lexer.advance(),
-                ))
-            }
-        }
-        (
-            Some(Token {
-                location: _,
-                lexeme: Lexeme::Semicolon,
-            }),
-            lexer,
-        ) => Ok((None, lexer.advance())),
-        (
-            Some(Token {
-                location: _,
-                lexeme: Lexeme::Operator("="),
-            }),
-            lexer,
-        ) => Ok((None, lexer)),
-        (
-            // Parentheses.
-            Some(Token {
-                location: _,
-                lexeme: Lexeme::LParen,
-            }),
-            lexer,
-        ) => {
-            let (expr, lexer) = parse_callsite(lexer.advance())?;
-            Ok((Some(expr.into()), lexer.chomp(Lexeme::RParen)?))
-        }
-        (
-            // Parentheses.
-            Some(Token {
-                location: _,
-                lexeme: Lexeme::RParen,
-            }),
-            lexer,
-        ) => Ok((None, lexer)),
-        (
-            // An operator reference (which amounts to a symbol reference).
-            Some(Token {
-                location,
-                lexeme: Lexeme::Operator(name),
-            }),
-            lexer,
-        ) => Ok((
-            Some(
-                Expr::Symbol {
-                    id: Identifier::new(name, location),
+            Lexeme::Identifier(name) => {
+                if name == "let" {
+                    parse_let_expr(lexer.location.clone(), lexer.advance())
+                } else {
+                    Ok((
+                        Some(
+                            Expr::Symbol {
+                                id: Identifier::new(name, location),
+                            }
+                            .into(),
+                        ),
+                        lexer.advance(),
+                    ))
                 }
-                .into(),
-            ),
-            lexer.advance(),
-        )),
-        (x, lexer) => {
-            let x = x.unwrap();
-            eprintln!("{}: ran into {:?}", x.location, x);
-            Err(ParseError::not_impl(lexer.location))
-        }
+            }
+            Lexeme::Semicolon => Ok((None, lexer.advance())),
+            Lexeme::Operator("=") => Ok((None, lexer)),
+            Lexeme::LParen => {
+                let (expr, lexer) = parse_callsite(lexer.advance())?;
+                Ok((Some(expr.into()), lexer.chomp(Lexeme::RParen)?))
+            }
+            Lexeme::RParen => Ok((None, lexer)),
+            Lexeme::Operator(name) => Ok((
+                Some(
+                    Expr::Symbol {
+                        id: Identifier::new(name, location),
+                    }
+                    .into(),
+                ),
+                lexer.advance(),
+            )),
+            lexeme => {
+                eprintln!("{}: ran into {:?}", location, lexeme);
+                Err(ParseError::not_impl(location))
+            }
+        },
     }
     /*
     parse_parentheses,
@@ -330,18 +397,16 @@ fn parse_callsite(lexer: Lexer) -> Result<(Expr, Lexer), ParseError> {
         Some(function) => match parse_many(parse_callsite_term, lexer)? {
             (callsite_terms, lexer) => {
                 if callsite_terms.len() == 0 {
-                    return Err(ParseError::error(
-                        lexer.location,
-                        "missing an expression here?",
-                    ));
+                    Ok((*function, lexer))
+                } else {
+                    Ok((
+                        Expr::Callsite {
+                            function: function,
+                            arguments: callsite_terms,
+                        },
+                        lexer,
+                    ))
                 }
-                Ok((
-                    Expr::Callsite {
-                        function: function,
-                        arguments: callsite_terms,
-                    },
-                    lexer,
-                ))
             }
         },
         None => Err(ParseError::error(
@@ -357,6 +422,7 @@ pub fn parse_decl(lexer: Lexer) -> Result<(Option<Decl>, Lexer), ParseError> {
         (None, lexer) => return Ok((None, lexer)),
     };
     let (predicates, lexer) = parse_predicates(lexer)?;
+    println!("got done with predicates for {}", &id.name);
     let lexer = lexer.chomp(Lexeme::Operator("="))?;
     let (expr, lexer) = parse_callsite(lexer)?;
     println!("Found callsite {:?}", expr);

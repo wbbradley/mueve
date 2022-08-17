@@ -1,10 +1,10 @@
-use crate::location::Location;
+use crate::location::{HasLocation, Location};
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Identifier<'a> {
     pub name: &'a str,
-    pub location: Location<'a>,
+    location: Location<'a>,
 }
 
 impl<'a> Identifier<'a> {
@@ -14,5 +14,11 @@ impl<'a> Identifier<'a> {
             name: name,
             location: location,
         }
+    }
+}
+
+impl<'a> HasLocation<'a> for Identifier<'a> {
+    fn get_location(&self) -> &Location<'a> {
+        &self.location
     }
 }

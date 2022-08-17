@@ -17,6 +17,7 @@ pub enum Lexeme<'a> {
     RSquare,
     LCurly,
     RCurly,
+    Comma,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,7 +52,6 @@ fn is_operator_char(ch: char) -> bool {
         || ch == '*'
         || ch == '/'
         || ch == '?'
-        || ch == ','
         || ch == '~';
 }
 impl<'a> Lexer<'a> {
@@ -60,6 +60,14 @@ impl<'a> Lexer<'a> {
             LexState::Started => (None, self),
             LexState::Read(ref token) => (Some(token.clone()), self),
             LexState::EOF => (None, self),
+        }
+    }
+
+    pub fn peek_matches(&self, expect_lexeme: Lexeme<'a>) -> bool {
+        match self.state {
+            LexState::Started => false,
+            LexState::Read(ref token) => token.lexeme == expect_lexeme,
+            LexState::EOF => false,
         }
     }
 
@@ -150,6 +158,8 @@ impl<'a> Lexer<'a> {
                         return self._advance(ch, count, Lexeme::RSquare);
                     } else if ch == ';' {
                         return self._advance(ch, count, Lexeme::Semicolon);
+                    } else if ch == ',' {
+                        return self._advance(ch, count, Lexeme::Comma);
                     } else {
                         assert!(false, "could not figure out what do do with '{ch}'!");
                     }
