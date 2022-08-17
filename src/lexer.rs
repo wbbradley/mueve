@@ -58,7 +58,10 @@ impl<'a> Lexer<'a> {
     pub fn peek(self) -> (Option<Token<'a>>, Self) {
         match self.state {
             LexState::Started => (None, self),
-            LexState::Read(ref token) => (Some(token.clone()), self),
+            LexState::Read(ref token) => {
+                println!("{}: lexing  {:?}", token.location, token);
+                (Some(token.clone()), self)
+            }
             LexState::EOF => (None, self),
         }
     }
@@ -107,6 +110,7 @@ impl<'a> Lexer<'a> {
             Digits,
             Operator,
             Minus,
+            QuotedString,
         }
         let mut ls = LS::Start;
         let mut start_location = self.location.clone();
@@ -144,6 +148,11 @@ impl<'a> Lexer<'a> {
                         lexeme_start_index = count;
                         lexeme_start = &self.contents[count..];
                         start_location = self.location.clone();
+                    } else if ch == '"' {
+                        ls = LS::QuotedString;
+                        lexeme_start_index = count;
+                        lexeme_start = &self.contents[count..];
+                        start_location = self.location.clone();
                     } else if ch == '(' {
                         return self._advance(ch, count, Lexeme::LParen);
                     } else if ch == ')' {
@@ -161,7 +170,10 @@ impl<'a> Lexer<'a> {
                     } else if ch == ',' {
                         return self._advance(ch, count, Lexeme::Comma);
                     } else {
-                        assert!(false, "could not figure out what do do with '{ch}'!");
+                        assert!(
+                            false,
+                            "could not figure out what do do with character ({ch})"
+                        );
                     }
 
                     count += ch.len_utf8();
@@ -225,6 +237,22 @@ impl<'a> Lexer<'a> {
                                     .unwrap(),
                             ),
                         });
+                        return self;
+                    }
+                }
+                LS::QuotedString => {
+                    count += ch.len_utf8();
+                    if ch != '"' {
+                        self.update_loc(ch);
+                    } else {
+                        self.contents = &self.contents[count..];
+                        self.state = LexState::Read(Token {
+                            location: start_location,
+                            lexeme: Lexeme::QuotedString(
+                                &lexeme_start[..count - lexeme_start_index + 1],
+                            ),
+                        });
+                        println!("lexed {}", &lexeme_start[..count - lexeme_start_index]);
                         return self;
                     }
                 }

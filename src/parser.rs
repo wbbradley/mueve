@@ -65,6 +65,10 @@ pub enum Expr<'a> {
         location: Location<'a>,
         value: i64,
     },
+    LiteralFloat {
+        location: Location<'a>,
+        value: f64,
+    },
     LiteralString {
         location: Location<'a>,
         value: String,
@@ -102,6 +106,7 @@ impl<'a> HasLocation<'a> for Expr<'a> {
                 body: _,
             } => location,
             Expr::LiteralInteger { location, value: _ } => location,
+            Expr::LiteralFloat { location, value: _ } => location,
             Expr::LiteralString { location, value: _ } => location,
             Expr::Symbol { id } => id.get_location(),
             Expr::Match {
@@ -345,6 +350,12 @@ fn parse_callsite_term(lexer: Lexer) -> Result<(Option<Box<Expr>>, Lexer), Parse
             Lexeme::Identifier(name) => {
                 if name == "let" {
                     parse_let_expr(lexer.location.clone(), lexer.advance())
+                } else if name == "if" {
+                    println!("AAAAAAAAAAAAAA");
+                    Ok((None, lexer))
+                } else if is_keyword(name) {
+                    println!("BBBBBBBBBBBBBB {}", name);
+                    Ok((None, lexer))
                 } else {
                     Ok((
                         Some(
@@ -371,6 +382,24 @@ fn parse_callsite_term(lexer: Lexer) -> Result<(Option<Box<Expr>>, Lexer), Parse
                     }
                     .into(),
                 ),
+                lexer.advance(),
+            )),
+            Lexeme::QuotedString(value) => Ok((
+                Some(
+                    Expr::LiteralString {
+                        location,
+                        value: value.into(),
+                    }
+                    .into(),
+                ),
+                lexer.advance(),
+            )),
+            Lexeme::Signed(value) => Ok((
+                Some(Expr::LiteralInteger { location, value }.into()),
+                lexer.advance(),
+            )),
+            Lexeme::Float(value) => Ok((
+                Some(Expr::LiteralFloat { location, value }.into()),
                 lexer.advance(),
             )),
             lexeme => {
@@ -425,7 +454,7 @@ pub fn parse_decl(lexer: Lexer) -> Result<(Option<Decl>, Lexer), ParseError> {
     println!("got done with predicates for {}", &id.name);
     let lexer = lexer.chomp(Lexeme::Operator("="))?;
     let (expr, lexer) = parse_callsite(lexer)?;
-    println!("Found callsite {:?}", expr);
+    println!("{}: Found callsite {:?}", expr.get_location(), expr);
     Ok((
         Some({
             let decl = Decl {
