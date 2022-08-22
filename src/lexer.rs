@@ -21,6 +21,23 @@ pub enum Lexeme<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Nesting {
+    parens: i64,
+    squares: i64,
+    curlies: i64,
+}
+
+impl Nesting {
+    fn new() -> Self {
+        Nesting {
+            parens: 0,
+            squares: 0,
+            curlies: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum LexState<'a> {
     Started,
     Read(Token<'a>),
@@ -32,6 +49,7 @@ pub enum LexState<'a> {
 pub struct Lexer<'a> {
     contents: &'a str,
     pub location: Location<'a>,
+    nesting: Nesting,
     state: LexState<'a>,
 }
 
@@ -79,7 +97,7 @@ impl<'a> Lexer<'a> {
             LexState::Started => Err(ParseError::error(self.location, "lexer was not started!")),
             LexState::Read(ref token) => {
                 if token.lexeme == expect_lexeme {
-                    Ok(self.advance())
+                    self.advance()
                 } else {
                     Err(ParseError::unexpected(
                         token.clone(),
@@ -94,14 +112,14 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn advance(mut self) -> Self {
+    pub fn advance(mut self) -> Result<Self, ParseError<'a>> {
         if self.state == LexState::EOF {
-            return self;
+            return Ok(self);
         }
 
         if self.contents.len() == 0 {
             self.state = LexState::EOF;
-            return self;
+            return Ok(self);
         }
 
         enum LS {
@@ -126,7 +144,7 @@ impl<'a> Lexer<'a> {
                     self.update_loc(ch);
                     if ch == '\0' {
                         self.state = LexState::EOF;
-                        return self;
+                        return Ok(self);
                     } else if ch.is_whitespace() {
                     } else if ch.is_digit(10) {
                         ls = LS::Digits;
@@ -188,7 +206,7 @@ impl<'a> Lexer<'a> {
                             location: start_location,
                             lexeme: Lexeme::Identifier(&lexeme_start[..count - lexeme_start_index]),
                         });
-                        return self;
+                        return Ok(self);
                     }
                 }
                 LS::Operator => {
@@ -202,7 +220,7 @@ impl<'a> Lexer<'a> {
                             location: start_location,
                             lexeme: Lexeme::Operator(&lexeme_start[..count - lexeme_start_index]),
                         });
-                        return self;
+                        return Ok(self);
                     }
                 }
                 LS::Minus => {
@@ -220,7 +238,7 @@ impl<'a> Lexer<'a> {
                             location: start_location,
                             lexeme: Lexeme::Operator(&lexeme_start[..count - lexeme_start_index]),
                         });
-                        return self;
+                        return Ok(self);
                     }
                 }
                 LS::Digits => {
@@ -237,7 +255,7 @@ impl<'a> Lexer<'a> {
                                     .unwrap(),
                             ),
                         });
-                        return self;
+                        return Ok(self);
                     }
                 }
                 LS::QuotedString => {
@@ -253,21 +271,61 @@ impl<'a> Lexer<'a> {
                             ),
                         });
                         println!("lexed {}", &lexeme_start[..count - lexeme_start_index]);
-                        return self;
+                        return Ok(self);
                     }
                 }
             }
         }
     }
 
-    fn _advance(mut self, ch: char, mut count: usize, lexeme: Lexeme<'a>) -> Self {
+    fn _advance(
+        mut self,
+        ch: char,
+        mut count: usize,
+        lexeme: Lexeme<'a>,
+    ) -> Result<Self, ParseError<'a>> {
+        // TODO: make this a stack.
+        match lexeme {
+            Lexeme::LParen => self.nesting.parens += 1,
+            Lexeme::RParen => {
+                if self.nesting.parens == 0 {
+                    return Err(ParseError::error(
+                        self.location,
+                        "found a closing paren without an opening",
+                    ));
+                }
+                self.nesting.parens -= 1
+            }
+            Lexeme::LSquare => self.nesting.squares += 1,
+            Lexeme::RSquare => {
+                if self.nesting.squares == 0 {
+                    return Err(ParseError::error(
+                        self.location,
+                        "found a closing square brace without an opening",
+                    ));
+                }
+                self.nesting.squares -= 1
+            }
+            Lexeme::LCurly => self.nesting.curlies += 1,
+            Lexeme::RCurly => {
+                if self.nesting.curlies == 0 {
+                    return Err(ParseError::error(
+                        self.location,
+                        "found a closing curly brace without an opening",
+                    ));
+                }
+                self.nesting.curlies -= 1
+            }
+            _ => (),
+        }
+
         count += ch.len_utf8();
         self.contents = &self.contents[count..];
         self.state = LexState::Read(Token {
             location: self.location.clone(),
             lexeme: lexeme,
         });
-        self
+        Ok(self)
     }
 
     pub fn new<T, U>(filename: T, input: U) -> Self
@@ -283,6 +341,7 @@ impl<'a> Lexer<'a> {
                 col: 0,
             },
             state: LexState::Started,
+            nesting: Nesting::new(),
         }
     }
 

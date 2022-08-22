@@ -12,15 +12,8 @@ mod token;
 use crate::parser::{parse_decl, parse_many};
 
 fn main() {
-    let exit_code = run_compiler();
+    let exit_code = if run_real_compiler() { 0 } else { 1 };
     std::process::exit(exit_code);
-}
-
-fn run_compiler() -> i32 {
-    match run_real_compiler() {
-        true => 0,
-        false => 1,
-    }
 }
 
 fn run_real_compiler() -> bool {
@@ -47,15 +40,18 @@ fn run_real_compiler() -> bool {
 
 fn compile<'a>(filename: &'a str, input: &'a str) -> bool {
     let lexer = Lexer::new(filename, input);
-    match parse_many(parse_decl, lexer.advance()) {
-        Ok((decls, _)) => {
-            println!("Parsed {:?}", decls);
-            true
-        }
-        Err(err) => {
-            eprintln!("{}", err);
-            false
-        }
+    match lexer.advance() {
+        Ok(lexer) => match parse_many(parse_decl, lexer) {
+            Ok((decls, _)) => {
+                println!("Parsed {:?}", decls);
+                true
+            }
+            Err(err) => {
+                eprintln!("{}", err);
+                false
+            }
+        },
+        Err(_) => false,
     }
 }
 
