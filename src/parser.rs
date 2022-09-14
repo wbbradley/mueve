@@ -364,6 +364,7 @@ fn parse_callsite_term<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Option<Box<
             Lexeme::Identifier(name) => {
                 println!("KKJDKF");
                 if name == "let" {
+                    let loc = lexer.location.clone()
                     parse_let_expr(lexer.location.clone(), lexer.advance()?)
                 } else if name == "match" {
                     parse_match_expr(lexer.location.clone(), lexer.advance()?)
