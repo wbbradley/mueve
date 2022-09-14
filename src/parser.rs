@@ -200,7 +200,7 @@ fn parse_tuple_predicate<'a>(
                     predicates.push(Box::new(predicate));
                     lexer = lexer.advance()?;
                 } else {
-                    lexer = lexer.chomp(Lexeme::RParen)?;
+                    lexer.chomp(Lexeme::RParen)?;
                     if predicates.len() == 0 {
                         return Ok((Some(predicate), lexer));
                     } else if predicates.len() >= 1 {
@@ -221,7 +221,7 @@ fn parse_tuple_predicate<'a>(
             }
         }
     }
-    lexer = lexer.chomp(Lexeme::RParen)?;
+    lexer.chomp(Lexeme::RParen)?;
     Ok((
         Some(Predicate::Tuple {
             location,
@@ -317,7 +317,21 @@ fn parse_match_expr<'a>(
     _location: Location<'a>,
     lexer: Lexer<'a>,
 ) -> Result<(Option<Box<Expr<'a>>>, Lexer<'a>), ParseError<'a>> {
-    println!("FIXME: alksdjfalksdjf");
+    let (binding_value, lexer) = parse_callsite(lexer)?;
+    loop {
+        lexer.skip_semicolon()?;
+        match parse_predicate(lexer)? {
+            (Some(predicate), new_lexer) => {
+                lexer.chomp(Lexeme::Operator("=>"))?;
+                break;
+            }
+            (None, new_lexer) => {
+                lexer = new_lexer;
+                break;
+            }
+        }
+    }
+
     Ok((None, lexer))
 }
 
@@ -326,9 +340,9 @@ fn parse_let_expr<'a>(
     lexer: Lexer<'a>,
 ) -> Result<(Option<Box<Expr<'a>>>, Lexer<'a>), ParseError<'a>> {
     let (binding_id, lexer) = parse_identifier(lexer)?;
-    let lexer = lexer.chomp(Lexeme::Operator("="))?;
+    lexer.chomp(Lexeme::Operator("="))?;
     let (binding_value, lexer) = parse_callsite(lexer)?;
-    let lexer = lexer.chomp(Lexeme::Identifier("in"))?;
+    lexer.chomp(Lexeme::Identifier("in"))?;
     let (in_body, lexer) = parse_callsite(lexer)?;
     Ok((
         Some(
@@ -377,7 +391,10 @@ fn parse_callsite_term(lexer: Lexer) -> Result<(Option<Box<Expr>>, Lexer), Parse
             Lexeme::Operator("=") => Ok((None, lexer)),
             Lexeme::LParen => {
                 let (expr, lexer) = parse_callsite(lexer.advance()?)?;
-                Ok((Some(expr.into()), lexer.chomp(Lexeme::RParen)?))
+                Ok((Some(expr.into()), {
+                    lexer.chomp(Lexeme::RParen)?;
+                    lexer
+                }))
             }
             Lexeme::RParen => Ok((None, lexer)),
             Lexeme::Operator(name) => Ok((
@@ -458,7 +475,7 @@ pub fn parse_decl(lexer: Lexer) -> Result<(Option<Decl>, Lexer), ParseError> {
     };
     let (predicates, lexer) = parse_predicates(lexer)?;
     println!("got done with predicates for {}", &id.name);
-    let lexer = lexer.chomp(Lexeme::Operator("="))?;
+    lexer.chomp(Lexeme::Operator("="))?;
     let (expr, lexer) = parse_callsite(lexer)?;
     println!("{}: Found callsite {:?}", expr.get_location(), expr);
     Ok((
