@@ -151,7 +151,7 @@ impl<'a> Lexer<'a> {
             LexState::Started => Err(ParseError::error(self.location, "lexer was not started!")),
             LexState::Read(ref token) => {
                 if token.lexeme == expect_lexeme {
-                    self.advance_mut()
+                    self.advance()
                 } else {
                     Err(ParseError::unexpected(
                         token.clone(),
@@ -166,9 +166,9 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn advance(mut self) -> ParseResult<'a, Self> {
-        self.advance_mut()?;
-        Ok(self)
+    pub fn advance(mut self) -> ParseResult<'a, ()> {
+        let _ = self.advance_mut()?;
+        Ok(())
     }
 
     pub fn advance_mut(&mut self) -> ParseResult<'a, Location<'a>> {

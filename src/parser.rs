@@ -331,24 +331,21 @@ fn parse_match_expr<'a>(
 
 fn parse_let_expr<'a>(
     location: Location<'a>,
-    mut lexer: Lexer<'a>,
-) -> Result<(Option<Box<Expr<'a>>>, Lexer<'a>), ParseError<'a>> {
+    lexer: &mut Lexer<'a>,
+) -> ParseResult<'a, Option<Box<Expr<'a>>>> {
     let binding_id = parse_identifier(&mut lexer)?;
     lexer.chomp(Lexeme::Operator("="))?;
     let binding_value = parse_callsite(&mut lexer)?;
     lexer.chomp(Lexeme::Identifier("in"))?;
     let in_body = parse_callsite(&mut lexer)?;
-    Ok((
-        Some(
-            Expr::Let {
-                location: location,
-                binding: binding_id,
-                value: binding_value.into(),
-                body: in_body.into(),
-            }
-            .into(),
-        ),
-        lexer,
+    Ok(Some(
+        Expr::Let {
+            location: location,
+            binding: binding_id,
+            value: binding_value.into(),
+            body: in_body.into(),
+        }
+        .into(),
     ))
 }
 
@@ -364,26 +361,28 @@ fn parse_callsite_term<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Option<Box<
             Lexeme::Identifier(name) => {
                 println!("KKJDKF");
                 if name == "let" {
-                    let loc = lexer.location.clone()
-                    parse_let_expr(lexer.location.clone(), lexer.advance()?)
+                    let loc = lexer.advance_mut()?;
+                    parse_let_expr(loc, lexer)
                 } else if name == "match" {
-                    parse_match_expr(lexer.location.clone(), lexer.advance()?)
+                    let location = lexer.advance_mut()?;
+                    parse_match_expr(location, lexer)
                 } else if is_keyword(name) {
-                    println!("BBBBBBBBBBBBBB {}", name);
-                    Ok((None, lexer))
+                    println!("FIXME: not impl keyword? '{}'", name);
+                    Ok(None)
                 } else {
-                    Ok((
-                        Some(
-                            Expr::Symbol {
-                                id: Identifier::new(name, location),
-                            }
-                            .into(),
-                        ),
-                        lexer.advance()?,
+                    lexer.advance_mut()?;
+                    Ok(Some(
+                        Expr::Symbol {
+                            id: Identifier::new(name, location),
+                        }
+                        .into(),
                     ))
                 }
             }
-            Lexeme::Semicolon => Ok((None, lexer.advance()?)),
+            Lexeme::Semicolon => {
+                lexer.advance_mut()?;
+                Ok(None)
+            }
             Lexeme::Operator("=") => Ok((None, lexer)),
             Lexeme::LParen => {
                 lexer.advance_mut()?;
