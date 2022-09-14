@@ -171,12 +171,14 @@ impl<'a> Lexer<'a> {
         Ok(self)
     }
 
-    pub fn advance_mut(&mut self) -> ParseResult<'a, ()> {
+    pub fn advance_mut(&mut self) -> ParseResult<'a, Location<'a>> {
+        let mut start_location = self.location.clone();
+
         if self.state == LexState::EOF {
-            return Ok(());
+            return Ok(start_location);
         } else if self.contents.len() == 0 {
             self.state = LexState::EOF;
-            return Ok(());
+            return Ok(start_location);
         }
 
         // println!("[advance] {:?}", self.state);
@@ -189,7 +191,6 @@ impl<'a> Lexer<'a> {
             QuotedString,
         }
         let mut ls = LS::Start;
-        let mut start_location = self.location.clone();
         let mut count = 0;
         let mut lexeme_start = self.contents;
         let mut lexeme_start_index = 0;
@@ -226,13 +227,13 @@ impl<'a> Lexer<'a> {
                             location: start_location,
                             lexeme: Lexeme::Semicolon,
                         });
-                        return Ok(());
+                        return Ok(start_location);
                     }
                     self.update_loc(ch);
                     let location = self.location;
                     if ch == '\0' {
                         self.state = LexState::EOF;
-                        return Ok(());
+                        return Ok(start_location);
                     } else if ch.is_whitespace() {
                     } else if ch.is_digit(10) {
                         ls = LS::Digits;
@@ -294,7 +295,7 @@ impl<'a> Lexer<'a> {
                             location: start_location,
                             lexeme: Lexeme::Identifier(&lexeme_start[..count - lexeme_start_index]),
                         });
-                        return Ok(());
+                        return Ok(start_location);
                     }
                 }
                 LS::Operator => {
@@ -308,7 +309,7 @@ impl<'a> Lexer<'a> {
                             location: start_location,
                             lexeme: Lexeme::Operator(&lexeme_start[..count - lexeme_start_index]),
                         });
-                        return Ok(());
+                        return Ok(start_location);
                     }
                 }
                 LS::Minus => {
@@ -326,7 +327,7 @@ impl<'a> Lexer<'a> {
                             location: start_location,
                             lexeme: Lexeme::Operator(&lexeme_start[..count - lexeme_start_index]),
                         });
-                        return Ok(());
+                        return Ok(start_location);
                     }
                 }
                 LS::Digits => {
@@ -343,7 +344,7 @@ impl<'a> Lexer<'a> {
                                     .unwrap(),
                             ),
                         });
-                        return Ok(());
+                        return Ok(start_location);
                     }
                 }
                 LS::QuotedString => {
@@ -359,7 +360,7 @@ impl<'a> Lexer<'a> {
                             ),
                         });
                         println!("lexed {}", &lexeme_start[..count - lexeme_start_index]);
-                        return Ok(());
+                        return Ok(start_location);
                     }
                 }
             }
@@ -372,7 +373,7 @@ impl<'a> Lexer<'a> {
         mut count: usize,
         location: Location<'a>,
         lexeme: Lexeme<'a>,
-    ) -> ParseResult<'a, ()> {
+    ) -> ParseResult<'a, Location<'a>> {
         // TODO: make this a stack.
         match lexeme {
             Lexeme::LParen => {
@@ -411,10 +412,10 @@ impl<'a> Lexer<'a> {
         count += ch.len_utf8();
         self.contents = &self.contents[count..];
         self.state = LexState::Read(Token {
-            location: self.location.clone(),
+            location: self.location,
             lexeme: lexeme,
         });
-        Ok(())
+        Ok(location)
     }
 
     pub fn new<T, U>(filename: T, input: U) -> Self

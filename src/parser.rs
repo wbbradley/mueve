@@ -310,25 +310,23 @@ fn parse_identifier<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Identifier<'a>
 
 fn parse_match_expr<'a>(
     _location: Location<'a>,
-    mut lexer: Lexer<'a>,
-) -> Result<(Option<Box<Expr<'a>>>, Lexer<'a>), ParseError<'a>> {
-    let _binding_value = parse_callsite(&mut lexer)?;
+    lexer: &mut Lexer<'a>,
+) -> ParseResult<'a, Option<Box<Expr<'a>>>> {
+    let _binding_value = parse_callsite(lexer)?;
     loop {
         lexer.skip_semicolon()?;
         match parse_predicate(lexer)? {
-            (Some(_predicate), new_lexer) => {
-                lexer = new_lexer;
+            Some(_predicate) => {
                 lexer.chomp(Lexeme::Operator("=>"))?;
                 break;
             }
-            (None, new_lexer) => {
-                lexer = new_lexer;
+            None => {
                 break;
             }
         }
     }
 
-    Ok((None, lexer))
+    Ok(None)
 }
 
 fn parse_let_expr<'a>(
@@ -354,11 +352,12 @@ fn parse_let_expr<'a>(
     ))
 }
 
-fn parse_callsite_term(mut lexer: Lexer) -> Result<(Option<Box<Expr>>, Lexer), ParseError> {
+fn parse_callsite_term<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Option<Box<Expr<'a>>>> {
     match lexer.peek() {
         None => {
             println!("AABAB");
-            Ok((None, lexer.advance()?))
+            lexer.advance_mut()?;
+            Ok(None)
         }
         Some(Token { location, lexeme }) => match lexeme {
             // A symbol reference.
