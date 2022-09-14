@@ -118,13 +118,13 @@ fn is_operator_char(ch: char) -> bool {
         || ch == '~';
 }
 impl<'a> Lexer<'a> {
-    pub fn skip_semicolon(mut self) -> ParseResult<'a, ()> {
+    pub fn skip_semicolon(&mut self) -> ParseResult<'a, ()> {
         while let Some(Token {
             lexeme: Lexeme::Semicolon,
             ..
         }) = self.peek()
         {
-            self = self.advance()?;
+            self.advance_mut()?;
         }
         Ok(())
     }
