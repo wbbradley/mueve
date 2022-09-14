@@ -51,7 +51,10 @@ fn compile<'a>(filename: &'a str, input: &'a str) -> bool {
                 false
             }
         },
-        Err(_) => false,
+        Err(err) => {
+            eprintln!("{}", err);
+            false
+        }
     }
 }
 

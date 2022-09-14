@@ -1,6 +1,7 @@
 use crate::error::ParseError;
 use crate::location::Location;
 use crate::token::Token;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
@@ -20,20 +21,61 @@ pub enum Lexeme<'a> {
     Comma,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Nesting {
-    parens: i64,
-    squares: i64,
-    curlies: i64,
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum BracketType {
+    Paren,
+    Square,
+    Curly,
 }
 
-impl Nesting {
-    fn new() -> Self {
-        Nesting {
-            parens: 0,
-            squares: 0,
-            curlies: 0,
+#[derive(Debug, Clone, PartialEq)]
+pub struct Nesting<'a> {
+    location: Location<'a>,
+    bt: BracketType,
+    next: Option<Rc<Nesting<'a>>>,
+}
+
+fn push_nested_bracket<'a>(
+    location: Location<'a>,
+    bt: BracketType,
+    next: Option<Rc<Nesting<'a>>>,
+) -> Option<Rc<Nesting<'a>>> {
+    Some(Rc::new(Nesting { location, bt, next }))
+}
+fn pop_nested_bracket<'a>(
+    nesting: Option<Rc<Nesting<'a>>>,
+    location: Location<'a>,
+    bt: BracketType,
+) -> Result<Option<Rc<Nesting<'a>>>, ParseError<'a>> {
+    if let Some(nesting) = nesting {
+        match *nesting {
+            Nesting {
+                location: top_location,
+                bt: top_bt,
+                ref next,
+            } => {
+                if bt == top_bt {
+                    // Peel off this head node, and return whatever's beneath.
+                    Ok(next.clone())
+                } else {
+                    Err(ParseError::error(
+                        location,
+                        format!(
+                            "encountered a {:?} but expected to close a {:?} from {}",
+                            bt, top_bt, top_location
+                        ),
+                    ))
+                }
+            }
         }
+    } else {
+        Err(ParseError::error(
+            location,
+            format!(
+                "encountered a {:?} but we're not inside of any nested syntax",
+                bt,
+            ),
+        ))
     }
 }
 
@@ -49,7 +91,7 @@ pub enum LexState<'a> {
 pub struct Lexer<'a> {
     contents: &'a str,
     pub location: Location<'a>,
-    nesting: Nesting,
+    nesting: Option<Rc<Nesting<'a>>>,
     state: LexState<'a>,
 }
 
@@ -73,14 +115,25 @@ fn is_operator_char(ch: char) -> bool {
         || ch == '~';
 }
 impl<'a> Lexer<'a> {
-    pub fn peek(self) -> (Option<Token<'a>>, Self) {
+    pub fn skip_semicolon(mut self) -> Result<(), ParseError<'a>> {
+        while let Some(Token {
+            lexeme: Lexeme::Semicolon,
+            ..
+        }) = self.peek()
+        {
+            self = self.advance()?;
+        }
+        Ok(())
+    }
+
+    pub fn peek(&self) -> Option<Token<'a>> {
         match self.state {
-            LexState::Started => (None, self),
+            LexState::Started => None,
             LexState::Read(ref token) => {
                 println!("{}: lexing  {:?}", token.location, token);
-                (Some(token.clone()), self)
+                Some(token.clone())
             }
-            LexState::EOF => (None, self),
+            LexState::EOF => None,
         }
     }
 
@@ -113,15 +166,20 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn advance(mut self) -> Result<Self, ParseError<'a>> {
+        self.advance_mut()
+    }
+
+    pub fn advance_mut(&mut self) -> Result<Self, ParseError<'a>> {
         if self.state == LexState::EOF {
-            return Ok(self);
+            return Ok(*self);
         }
 
         if self.contents.len() == 0 {
             self.state = LexState::EOF;
-            return Ok(self);
+            return Ok(*self);
         }
 
+        // println!("[advance] {:?}", self.state);
         enum LS {
             Start,
             Identifier,
@@ -141,10 +199,40 @@ impl<'a> Lexer<'a> {
 
             match ls {
                 LS::Start => {
+                    if ch == '\n' && self.nesting.is_some() {
+                        start_location = self.location.clone();
+                        let mut count = 1;
+                        loop {
+                            // Gobble up all whitespace.
+                            match ch_iter.next() {
+                                Some(ch) => {
+                                    if ch.is_whitespace() {
+                                        count += 1;
+                                    } else {
+                                        break;
+                                    }
+
+                                    // This is a lexing discontinuity but it achieves the whitespace
+                                    // flexibility we want. If a newline occurs outside of a nested structure,
+                                    // then it lexes as a semicolon token.
+                                    self.update_loc(ch);
+                                }
+                                None => break,
+                            }
+                        }
+
+                        self.contents = &self.contents[count..];
+                        self.state = LexState::Read(Token {
+                            location: start_location,
+                            lexeme: Lexeme::Semicolon,
+                        });
+                        return Ok(*self);
+                    }
                     self.update_loc(ch);
+                    let location = self.location;
                     if ch == '\0' {
                         self.state = LexState::EOF;
-                        return Ok(self);
+                        return Ok(*self);
                     } else if ch.is_whitespace() {
                     } else if ch.is_digit(10) {
                         ls = LS::Digits;
@@ -172,21 +260,21 @@ impl<'a> Lexer<'a> {
                         lexeme_start = &self.contents[count..];
                         start_location = self.location.clone();
                     } else if ch == '(' {
-                        return self._advance(ch, count, Lexeme::LParen);
+                        return self._advance(ch, count, location, Lexeme::LParen);
                     } else if ch == ')' {
-                        return self._advance(ch, count, Lexeme::RParen);
+                        return self._advance(ch, count, location, Lexeme::RParen);
                     } else if ch == '{' {
-                        return self._advance(ch, count, Lexeme::LCurly);
+                        return self._advance(ch, count, location, Lexeme::LCurly);
                     } else if ch == '}' {
-                        return self._advance(ch, count, Lexeme::RCurly);
+                        return self._advance(ch, count, location, Lexeme::RCurly);
                     } else if ch == '[' {
-                        return self._advance(ch, count, Lexeme::LSquare);
+                        return self._advance(ch, count, location, Lexeme::LSquare);
                     } else if ch == ']' {
-                        return self._advance(ch, count, Lexeme::RSquare);
+                        return self._advance(ch, count, location, Lexeme::RSquare);
                     } else if ch == ';' {
-                        return self._advance(ch, count, Lexeme::Semicolon);
+                        return self._advance(ch, count, location, Lexeme::Semicolon);
                     } else if ch == ',' {
-                        return self._advance(ch, count, Lexeme::Comma);
+                        return self._advance(ch, count, location, Lexeme::Comma);
                     } else {
                         assert!(
                             false,
@@ -206,7 +294,7 @@ impl<'a> Lexer<'a> {
                             location: start_location,
                             lexeme: Lexeme::Identifier(&lexeme_start[..count - lexeme_start_index]),
                         });
-                        return Ok(self);
+                        return Ok(*self);
                     }
                 }
                 LS::Operator => {
@@ -220,7 +308,7 @@ impl<'a> Lexer<'a> {
                             location: start_location,
                             lexeme: Lexeme::Operator(&lexeme_start[..count - lexeme_start_index]),
                         });
-                        return Ok(self);
+                        return Ok(*self);
                     }
                 }
                 LS::Minus => {
@@ -238,7 +326,7 @@ impl<'a> Lexer<'a> {
                             location: start_location,
                             lexeme: Lexeme::Operator(&lexeme_start[..count - lexeme_start_index]),
                         });
-                        return Ok(self);
+                        return Ok(*self);
                     }
                 }
                 LS::Digits => {
@@ -255,7 +343,7 @@ impl<'a> Lexer<'a> {
                                     .unwrap(),
                             ),
                         });
-                        return Ok(self);
+                        return Ok(*self);
                     }
                 }
                 LS::QuotedString => {
@@ -271,7 +359,7 @@ impl<'a> Lexer<'a> {
                             ),
                         });
                         println!("lexed {}", &lexeme_start[..count - lexeme_start_index]);
-                        return Ok(self);
+                        return Ok(*self);
                     }
                 }
             }
@@ -282,39 +370,36 @@ impl<'a> Lexer<'a> {
         mut self,
         ch: char,
         mut count: usize,
+        location: Location<'a>,
         lexeme: Lexeme<'a>,
     ) -> Result<Self, ParseError<'a>> {
         // TODO: make this a stack.
         match lexeme {
-            Lexeme::LParen => self.nesting.parens += 1,
+            Lexeme::LParen => {
+                self.nesting = push_nested_bracket(location, BracketType::Paren, self.nesting);
+            }
             Lexeme::RParen => {
-                if self.nesting.parens == 0 {
-                    return Err(ParseError::error(
-                        self.location,
-                        "found a closing paren without an opening",
-                    ));
-                }
-                self.nesting.parens -= 1
+                self.nesting = pop_nested_bracket(self.nesting, location, BracketType::Paren)?;
             }
-            Lexeme::LSquare => self.nesting.squares += 1,
+            Lexeme::LSquare => {
+                self.nesting = Some(Rc::new(Nesting {
+                    location,
+                    bt: BracketType::Square,
+                    next: self.nesting,
+                }));
+            }
             Lexeme::RSquare => {
-                if self.nesting.squares == 0 {
-                    return Err(ParseError::error(
-                        self.location,
-                        "found a closing square brace without an opening",
-                    ));
-                }
-                self.nesting.squares -= 1
+                self.nesting = pop_nested_bracket(self.nesting, location, BracketType::Square)?;
             }
-            Lexeme::LCurly => self.nesting.curlies += 1,
+            Lexeme::LCurly => {
+                self.nesting = Some(Rc::new(Nesting {
+                    location,
+                    bt: BracketType::Curly,
+                    next: self.nesting,
+                }));
+            }
             Lexeme::RCurly => {
-                if self.nesting.curlies == 0 {
-                    return Err(ParseError::error(
-                        self.location,
-                        "found a closing curly brace without an opening",
-                    ));
-                }
-                self.nesting.curlies -= 1
+                self.nesting = pop_nested_bracket(self.nesting, location, BracketType::Curly)?;
             }
             _ => (),
         }
@@ -341,7 +426,7 @@ impl<'a> Lexer<'a> {
                 col: 0,
             },
             state: LexState::Started,
-            nesting: Nesting::new(),
+            nesting: None,
         }
     }
 

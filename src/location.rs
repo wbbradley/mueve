@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::fmt;
 use std::fmt::Formatter;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[allow(dead_code)]
 pub struct Location<'a> {
     pub filename: &'a str,

@@ -319,6 +319,14 @@ fn parse_identifier(lexer: Lexer) -> Result<(Identifier, Lexer), ParseError> {
     }
 }
 
+fn parse_match_expr<'a>(
+    _location: Location<'a>,
+    lexer: Lexer<'a>,
+) -> Result<(Option<Box<Expr<'a>>>, Lexer<'a>), ParseError<'a>> {
+    println!("FIXME: alksdjfalksdjf");
+    Ok((None, lexer))
+}
+
 fn parse_let_expr<'a>(
     location: Location<'a>,
     lexer: Lexer<'a>,
@@ -344,15 +352,18 @@ fn parse_let_expr<'a>(
 
 fn parse_callsite_term(lexer: Lexer) -> Result<(Option<Box<Expr>>, Lexer), ParseError> {
     match lexer.peek() {
-        (None, lexer) => Ok((None, lexer.advance()?)),
+        (None, lexer) => {
+            println!("AABAB");
+            Ok((None, lexer.advance()?))
+        }
         (Some(Token { location, lexeme }), lexer) => match lexeme {
             // A symbol reference.
             Lexeme::Identifier(name) => {
+                println!("KKJDKF");
                 if name == "let" {
                     parse_let_expr(lexer.location.clone(), lexer.advance()?)
-                } else if name == "if" {
-                    println!("AAAAAAAAAAAAAA");
-                    Ok((None, lexer))
+                } else if name == "match" {
+                    parse_match_expr(lexer.location.clone(), lexer.advance()?)
                 } else if is_keyword(name) {
                     println!("BBBBBBBBBBBBBB {}", name);
                     Ok((None, lexer))
@@ -421,6 +432,13 @@ fn parse_callsite_term(lexer: Lexer) -> Result<(Option<Box<Expr>>, Lexer), Parse
 }
 
 fn parse_callsite(lexer: Lexer) -> Result<(Expr, Lexer), ParseError> {
+    while let Some(Token {
+        lexeme: Lexeme::Semicolon,
+        ..
+    }) = lexer.peek()
+    {
+        lexer.advance();
+    }
     let (maybe_function, lexer) = parse_callsite_term(lexer)?;
     match maybe_function {
         Some(function) => match parse_many(parse_callsite_term, lexer)? {
