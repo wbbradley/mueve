@@ -362,7 +362,7 @@ fn parse_let_expr<'a>(
     ))
 }
 
-fn parse_callsite_term(lexer: Lexer) -> Result<(Option<Box<Expr>>, Lexer), ParseError> {
+fn parse_callsite_term(mut lexer: Lexer) -> Result<(Option<Box<Expr>>, Lexer), ParseError> {
     match lexer.peek() {
         None => {
             println!("AABAB");
@@ -394,7 +394,8 @@ fn parse_callsite_term(lexer: Lexer) -> Result<(Option<Box<Expr>>, Lexer), Parse
             Lexeme::Semicolon => Ok((None, lexer.advance()?)),
             Lexeme::Operator("=") => Ok((None, lexer)),
             Lexeme::LParen => {
-                let (expr, lexer) = parse_callsite(lexer.advance()?)?;
+                lexer.advance_mut()?;
+                let expr = parse_callsite(&mut lexer)?;
                 Ok((Some(expr.into()), {
                     lexer.chomp(Lexeme::RParen)?;
                     lexer
