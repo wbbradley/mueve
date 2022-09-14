@@ -318,9 +318,9 @@ fn parse_identifier<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Identifier<'a>
 
 fn parse_match_expr<'a>(
     _location: Location<'a>,
-    lexer: Lexer<'a>,
+    mut lexer: Lexer<'a>,
 ) -> Result<(Option<Box<Expr<'a>>>, Lexer<'a>), ParseError<'a>> {
-    let (_binding_value, mut lexer) = parse_callsite(lexer)?;
+    let _binding_value = parse_callsite(&mut lexer)?;
     loop {
         lexer.skip_semicolon()?;
         match parse_predicate(lexer)? {
@@ -347,7 +347,7 @@ fn parse_let_expr<'a>(
     lexer.chomp(Lexeme::Operator("="))?;
     let binding_value = parse_callsite(&mut lexer)?;
     lexer.chomp(Lexeme::Identifier("in"))?;
-    let (in_body, lexer) = parse_callsite(lexer)?;
+    let in_body = parse_callsite(&mut lexer)?;
     Ok((
         Some(
             Expr::Let {
@@ -450,6 +450,7 @@ fn parse_callsite<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Expr<'a>> {
     lexer.skip_semicolon()?;
     let (maybe_function, new_lexer) = parse_callsite_term(*lexer)?;
     *lexer = new_lexer;
+
     match maybe_function {
         Some(function) => match parse_many(parse_callsite_term, *lexer)? {
             (callsite_terms, lexer) => {
