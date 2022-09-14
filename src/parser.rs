@@ -233,7 +233,7 @@ fn parse_tuple_predicate<'a>(
 
 fn parse_predicate(lexer: Lexer) -> Result<(Option<Predicate>, Lexer), ParseError> {
     match lexer.peek() {
-        (Some(token), lexer) => match token.lexeme {
+        Some(token) => match token.lexeme {
             Lexeme::Signed(value) => Ok((
                 Some(Predicate::Integer {
                     location: token.location,
@@ -273,7 +273,7 @@ fn parse_predicate(lexer: Lexer) -> Result<(Option<Predicate>, Lexer), ParseErro
             Lexeme::LParen => parse_tuple_predicate(token.location, lexer.advance()?),
             _ => Ok((None, lexer)),
         },
-        (None, lexer) => {
+        None => {
             return Err(ParseError::error(
                 lexer.location,
                 "missing token where a predicate was expected?",
@@ -302,14 +302,11 @@ fn parse_predicates(mut lexer: Lexer) -> Result<(Vec<Box<Predicate>>, Lexer), Pa
 
 fn parse_identifier(lexer: Lexer) -> Result<(Identifier, Lexer), ParseError> {
     match lexer.peek() {
-        (
-            Some(Token {
-                location,
-                lexeme: Lexeme::Identifier(name),
-            }),
-            lexer,
-        ) => Ok((Identifier::new(name, location), lexer.advance()?)),
-        (_, lexer) => Err(ParseError::error(
+        Some(Token {
+            location,
+            lexeme: Lexeme::Identifier(name),
+        }) => Ok((Identifier::new(name, location), lexer.advance()?)),
+        _ => Err(ParseError::error(
             lexer.location,
             "expected an identifier here",
         )),
@@ -349,11 +346,11 @@ fn parse_let_expr<'a>(
 
 fn parse_callsite_term(lexer: Lexer) -> Result<(Option<Box<Expr>>, Lexer), ParseError> {
     match lexer.peek() {
-        (None, lexer) => {
+        None => {
             println!("AABAB");
             Ok((None, lexer.advance()?))
         }
-        (Some(Token { location, lexeme }), lexer) => match lexeme {
+        Some(Token { location, lexeme }) => match lexeme {
             // A symbol reference.
             Lexeme::Identifier(name) => {
                 println!("KKJDKF");
