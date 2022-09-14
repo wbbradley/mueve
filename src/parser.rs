@@ -306,7 +306,7 @@ fn parse_identifier<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Identifier<'a>
             location,
             lexeme: Lexeme::Identifier(name),
         }) => {
-            lexer.advance()?;
+            lexer.advance_mut()?;
             Ok(Identifier::new(name, location))
         }
         _ => Err(ParseError::error(
