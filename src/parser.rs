@@ -317,11 +317,12 @@ fn parse_match_expr<'a>(
     _location: Location<'a>,
     lexer: Lexer<'a>,
 ) -> Result<(Option<Box<Expr<'a>>>, Lexer<'a>), ParseError<'a>> {
-    let (_binding_value, lexer) = parse_callsite(lexer)?;
+    let (_binding_value, mut lexer) = parse_callsite(lexer)?;
     loop {
         lexer.skip_semicolon()?;
         match parse_predicate(lexer)? {
-            (Some(predicate), new_lexer) => {
+            (Some(_predicate), new_lexer) => {
+                lexer = new_lexer;
                 lexer.chomp(Lexeme::Operator("=>"))?;
                 break;
             }
