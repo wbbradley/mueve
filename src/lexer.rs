@@ -166,7 +166,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn advance(mut self) -> ParseResult<'a, ()> {
+    pub fn advance(&mut self) -> ParseResult<'a, ()> {
         let _ = self.advance_mut()?;
         Ok(())
     }

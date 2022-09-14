@@ -370,7 +370,7 @@ fn parse_callsite_term<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Option<Box<
                     println!("FIXME: not impl keyword? '{}'", name);
                     Ok(None)
                 } else {
-                    lexer.advance_mut()?;
+                    lexer.advance()?;
                     Ok(Some(
                         Expr::Symbol {
                             id: Identifier::new(name, location),
@@ -383,43 +383,41 @@ fn parse_callsite_term<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Option<Box<
                 lexer.advance_mut()?;
                 Ok(None)
             }
-            Lexeme::Operator("=") => Ok((None, lexer)),
+            Lexeme::Operator("=") => Ok(None),
             Lexeme::LParen => {
-                lexer.advance_mut()?;
+                lexer.advance()?;
                 let expr = parse_callsite(&mut lexer)?;
-                Ok((Some(expr.into()), {
-                    lexer.chomp(Lexeme::RParen)?;
-                    lexer
-                }))
+                lexer.chomp(Lexeme::RParen)?;
+                Ok(Some(expr.into()))
             }
-            Lexeme::RParen => Ok((None, lexer)),
-            Lexeme::Operator(name) => Ok((
-                Some(
+            Lexeme::RParen => Ok(None),
+            Lexeme::Operator(name) => {
+                lexer.advance()?;
+                Ok(Some(
                     Expr::Symbol {
                         id: Identifier::new(name, location),
                     }
                     .into(),
-                ),
-                lexer.advance()?,
-            )),
-            Lexeme::QuotedString(value) => Ok((
-                Some(
+                ))
+            }
+            Lexeme::QuotedString(value) => {
+                lexer.advance()?;
+                Ok(Some(
                     Expr::LiteralString {
                         location,
                         value: value.into(),
                     }
                     .into(),
-                ),
-                lexer.advance()?,
-            )),
-            Lexeme::Signed(value) => Ok((
-                Some(Expr::LiteralInteger { location, value }.into()),
-                lexer.advance()?,
-            )),
-            Lexeme::Float(value) => Ok((
-                Some(Expr::LiteralFloat { location, value }.into()),
-                lexer.advance()?,
-            )),
+                ))
+            }
+            Lexeme::Signed(value) => {
+                lexer.advance()?;
+                Ok(Some(Expr::LiteralInteger { location, value }.into()))
+            }
+            Lexeme::Float(value) => {
+                lexer.advance()?;
+                Ok(Some(Expr::LiteralFloat { location, value }.into()))
+            }
             lexeme => {
                 eprintln!("{}: ran into {:?}", location, lexeme);
                 Err(ParseError::not_impl(location))
