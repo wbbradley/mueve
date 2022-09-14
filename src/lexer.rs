@@ -169,7 +169,8 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn advance(mut self) -> ParseResult<'a, Self> {
-        self.advance_mut()
+        self.advance_mut()?;
+        Ok(self)
     }
 
     pub fn advance_mut(&mut self) -> ParseResult<'a, ()> {
