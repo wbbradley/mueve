@@ -170,14 +170,11 @@ fn is_keyword(name: &str) -> bool {
 
 fn maybe_id(lexer: Lexer) -> Result<(Option<Identifier>, Lexer), ParseError> {
     match lexer.peek() {
-        (None, lexer) => Ok((None, lexer.advance()?)),
-        (
-            Some(Token {
-                location,
-                lexeme: Lexeme::Identifier(name),
-            }),
-            lexer,
-        ) => {
+        None => Ok((None, lexer.advance()?)),
+        Some(Token {
+            location,
+            lexeme: Lexeme::Identifier(name),
+        }) => {
             /* check for keywords */
             if is_keyword(name) {
                 Ok((None, lexer))
@@ -185,7 +182,7 @@ fn maybe_id(lexer: Lexer) -> Result<(Option<Identifier>, Lexer), ParseError> {
                 Ok((Some(Identifier::new(name, location)), lexer.advance()?))
             }
         }
-        (Some(_), lexer) => Ok((None, lexer)),
+        Some(_) => Ok((None, lexer)),
     }
 }
 
@@ -432,13 +429,7 @@ fn parse_callsite_term(lexer: Lexer) -> Result<(Option<Box<Expr>>, Lexer), Parse
 }
 
 fn parse_callsite(lexer: Lexer) -> Result<(Expr, Lexer), ParseError> {
-    while let Some(Token {
-        lexeme: Lexeme::Semicolon,
-        ..
-    }) = lexer.peek()
-    {
-        lexer.advance();
-    }
+    lexer = lexer.skip_any_semicolon();
     let (maybe_function, lexer) = parse_callsite_term(lexer)?;
     match maybe_function {
         Some(function) => match parse_many(parse_callsite_term, lexer)? {
