@@ -35,6 +35,8 @@ pub struct Nesting<'a> {
     next: Option<Rc<Nesting<'a>>>,
 }
 
+type ParseResult<'a, T> = Result<T, ParseError<'a>>;
+
 fn push_nested_bracket<'a>(
     location: Location<'a>,
     bt: BracketType,
@@ -42,11 +44,12 @@ fn push_nested_bracket<'a>(
 ) -> Option<Rc<Nesting<'a>>> {
     Some(Rc::new(Nesting { location, bt, next }))
 }
+
 fn pop_nested_bracket<'a>(
     nesting: Option<Rc<Nesting<'a>>>,
     location: Location<'a>,
     bt: BracketType,
-) -> Result<Option<Rc<Nesting<'a>>>, ParseError<'a>> {
+) -> ParseResult<'a, Option<Rc<Nesting<'a>>>> {
     if let Some(nesting) = nesting {
         match *nesting {
             Nesting {
@@ -115,7 +118,7 @@ fn is_operator_char(ch: char) -> bool {
         || ch == '~';
 }
 impl<'a> Lexer<'a> {
-    pub fn skip_semicolon(mut self) -> Result<(), ParseError<'a>> {
+    pub fn skip_semicolon(mut self) -> ParseResult<'a, ()> {
         while let Some(Token {
             lexeme: Lexeme::Semicolon,
             ..
@@ -145,7 +148,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn chomp(self, expect_lexeme: Lexeme<'a>) -> Result<Self, ParseError<'a>> {
+    pub fn chomp(self, expect_lexeme: Lexeme<'a>) -> ParseResult<'a, Self> {
         match self.state {
             LexState::Started => Err(ParseError::error(self.location, "lexer was not started!")),
             LexState::Read(ref token) => {
@@ -165,18 +168,16 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn advance(mut self) -> Result<Self, ParseError<'a>> {
+    pub fn advance(mut self) -> ParseResult<'a, Self> {
         self.advance_mut()
     }
 
-    pub fn advance_mut(&mut self) -> Result<Self, ParseError<'a>> {
+    pub fn advance_mut(&mut self) -> ParseResult<'a, ()> {
         if self.state == LexState::EOF {
-            return Ok(*self);
-        }
-
-        if self.contents.len() == 0 {
+            return Ok(());
+        } else if self.contents.len() == 0 {
             self.state = LexState::EOF;
-            return Ok(*self);
+            return Ok(());
         }
 
         // println!("[advance] {:?}", self.state);
@@ -226,13 +227,13 @@ impl<'a> Lexer<'a> {
                             location: start_location,
                             lexeme: Lexeme::Semicolon,
                         });
-                        return Ok(*self);
+                        return Ok(());
                     }
                     self.update_loc(ch);
                     let location = self.location;
                     if ch == '\0' {
                         self.state = LexState::EOF;
-                        return Ok(*self);
+                        return Ok(());
                     } else if ch.is_whitespace() {
                     } else if ch.is_digit(10) {
                         ls = LS::Digits;
@@ -294,7 +295,7 @@ impl<'a> Lexer<'a> {
                             location: start_location,
                             lexeme: Lexeme::Identifier(&lexeme_start[..count - lexeme_start_index]),
                         });
-                        return Ok(*self);
+                        return Ok(());
                     }
                 }
                 LS::Operator => {
@@ -308,7 +309,7 @@ impl<'a> Lexer<'a> {
                             location: start_location,
                             lexeme: Lexeme::Operator(&lexeme_start[..count - lexeme_start_index]),
                         });
-                        return Ok(*self);
+                        return Ok(());
                     }
                 }
                 LS::Minus => {
@@ -326,7 +327,7 @@ impl<'a> Lexer<'a> {
                             location: start_location,
                             lexeme: Lexeme::Operator(&lexeme_start[..count - lexeme_start_index]),
                         });
-                        return Ok(*self);
+                        return Ok(());
                     }
                 }
                 LS::Digits => {
@@ -343,7 +344,7 @@ impl<'a> Lexer<'a> {
                                     .unwrap(),
                             ),
                         });
-                        return Ok(*self);
+                        return Ok(());
                     }
                 }
                 LS::QuotedString => {
@@ -359,7 +360,7 @@ impl<'a> Lexer<'a> {
                             ),
                         });
                         println!("lexed {}", &lexeme_start[..count - lexeme_start_index]);
-                        return Ok(*self);
+                        return Ok(());
                     }
                 }
             }
@@ -367,12 +368,12 @@ impl<'a> Lexer<'a> {
     }
 
     fn _advance(
-        mut self,
+        &mut self,
         ch: char,
         mut count: usize,
         location: Location<'a>,
         lexeme: Lexeme<'a>,
-    ) -> Result<Self, ParseError<'a>> {
+    ) -> ParseResult<'a, ()> {
         // TODO: make this a stack.
         match lexeme {
             Lexeme::LParen => {
@@ -410,7 +411,7 @@ impl<'a> Lexer<'a> {
             location: self.location.clone(),
             lexeme: lexeme,
         });
-        Ok(self)
+        Ok(())
     }
 
     pub fn new<T, U>(filename: T, input: U) -> Self
