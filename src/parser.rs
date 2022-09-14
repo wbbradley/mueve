@@ -317,7 +317,7 @@ fn parse_match_expr<'a>(
     _location: Location<'a>,
     lexer: Lexer<'a>,
 ) -> Result<(Option<Box<Expr<'a>>>, Lexer<'a>), ParseError<'a>> {
-    let (binding_value, lexer) = parse_callsite(lexer)?;
+    let (_binding_value, lexer) = parse_callsite(lexer)?;
     loop {
         lexer.skip_semicolon()?;
         match parse_predicate(lexer)? {
