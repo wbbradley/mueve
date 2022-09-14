@@ -345,7 +345,7 @@ fn parse_let_expr<'a>(
 ) -> Result<(Option<Box<Expr<'a>>>, Lexer<'a>), ParseError<'a>> {
     let binding_id = parse_identifier(&mut lexer)?;
     lexer.chomp(Lexeme::Operator("="))?;
-    let (binding_value, lexer) = parse_callsite(lexer)?;
+    let binding_value = parse_callsite(&mut lexer)?;
     lexer.chomp(Lexeme::Identifier("in"))?;
     let (in_body, lexer) = parse_callsite(lexer)?;
     Ok((
@@ -446,22 +446,20 @@ fn parse_callsite_term(lexer: Lexer) -> Result<(Option<Box<Expr>>, Lexer), Parse
     */
 }
 
-fn parse_callsite<'a>(mut lexer: Lexer<'a>) -> ParseResult<'a, (Expr, Lexer)> {
+fn parse_callsite<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Expr<'a>> {
     lexer.skip_semicolon()?;
-    let (maybe_function, lexer) = parse_callsite_term(lexer)?;
+    let (maybe_function, new_lexer) = parse_callsite_term(*lexer)?;
+    *lexer = new_lexer;
     match maybe_function {
-        Some(function) => match parse_many(parse_callsite_term, lexer)? {
+        Some(function) => match parse_many(parse_callsite_term, *lexer)? {
             (callsite_terms, lexer) => {
                 if callsite_terms.len() == 0 {
-                    Ok((*function, lexer))
+                    Ok(*function)
                 } else {
-                    Ok((
-                        Expr::Callsite {
-                            function: function,
-                            arguments: callsite_terms,
-                        },
-                        lexer,
-                    ))
+                    Ok(Expr::Callsite {
+                        function: function,
+                        arguments: callsite_terms,
+                    })
                 }
             }
         },
