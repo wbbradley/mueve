@@ -378,30 +378,34 @@ impl<'a> Lexer<'a> {
         // TODO: make this a stack.
         match lexeme {
             Lexeme::LParen => {
-                self.nesting = push_nested_bracket(location, BracketType::Paren, self.nesting);
+                self.nesting =
+                    push_nested_bracket(location, BracketType::Paren, self.nesting.clone());
             }
             Lexeme::RParen => {
-                self.nesting = pop_nested_bracket(self.nesting, location, BracketType::Paren)?;
+                self.nesting =
+                    pop_nested_bracket(self.nesting.clone(), location, BracketType::Paren)?;
             }
             Lexeme::LSquare => {
                 self.nesting = Some(Rc::new(Nesting {
                     location,
                     bt: BracketType::Square,
-                    next: self.nesting,
+                    next: self.nesting.clone(),
                 }));
             }
             Lexeme::RSquare => {
-                self.nesting = pop_nested_bracket(self.nesting, location, BracketType::Square)?;
+                self.nesting =
+                    pop_nested_bracket(self.nesting.clone(), location, BracketType::Square)?;
             }
             Lexeme::LCurly => {
                 self.nesting = Some(Rc::new(Nesting {
                     location,
                     bt: BracketType::Curly,
-                    next: self.nesting,
+                    next: self.nesting.clone(),
                 }));
             }
             Lexeme::RCurly => {
-                self.nesting = pop_nested_bracket(self.nesting, location, BracketType::Curly)?;
+                self.nesting =
+                    pop_nested_bracket(self.nesting.clone(), location, BracketType::Curly)?;
             }
             _ => (),
         }
