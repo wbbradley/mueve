@@ -1,4 +1,4 @@
-use crate::error::ParseError;
+use crate::error::{ParseError, ParseResult};
 use crate::location::Location;
 use crate::token::Token;
 use std::rc::Rc;
@@ -34,8 +34,6 @@ pub struct Nesting<'a> {
     bt: BracketType,
     next: Option<Rc<Nesting<'a>>>,
 }
-
-type ParseResult<'a, T> = Result<T, ParseError<'a>>;
 
 fn push_nested_bracket<'a>(
     location: Location<'a>,

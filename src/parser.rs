@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::error::ParseError;
+use crate::error::{ParseError, ParseResult};
 use crate::identifier::Identifier;
 use crate::lexer::{Lexeme, Lexer};
 use crate::location::{HasLocation, Location};
@@ -425,8 +425,8 @@ fn parse_callsite_term(lexer: Lexer) -> Result<(Option<Box<Expr>>, Lexer), Parse
     */
 }
 
-fn parse_callsite(lexer: Lexer) -> Result<(Expr, Lexer), ParseError> {
-    lexer.skip_semicolon();
+fn parse_callsite<'a>(mut lexer: Lexer<'a>) -> ParseResult<'a, (Expr, Lexer)> {
+    lexer.skip_semicolon()?;
     let (maybe_function, lexer) = parse_callsite_term(lexer)?;
     match maybe_function {
         Some(function) => match parse_many(parse_callsite_term, lexer)? {

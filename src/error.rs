@@ -17,6 +17,8 @@ pub struct ParseError<'a> {
     message: String,
 }
 
+pub type ParseResult<'a, T> = Result<T, ParseError<'a>>;
+
 impl std::fmt::Display for ErrorLevel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
