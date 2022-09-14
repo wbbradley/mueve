@@ -279,15 +279,14 @@ fn parse_predicates<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Vec<Box<Predic
     let mut predicates = Vec::new();
     loop {
         match parse_predicate(lexer)? {
-            (None, lexer) => return Ok(predicates),
-            (Some(predicate), next_lexer) => {
+            None => return Ok(predicates),
+            Some(predicate) => {
                 println!(
                     "{}: found predicate {:?}",
                     predicate.get_location(),
                     predicate
                 );
                 predicates.push(Box::new(predicate));
-                lexer = next_lexer;
             }
         }
     }
