@@ -168,21 +168,25 @@ fn is_keyword(name: &str) -> bool {
         || name == "in"
 }
 
-fn maybe_id(lexer: Lexer) -> Result<(Option<Identifier>, Lexer), ParseError> {
+fn maybe_id<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Option<Identifier<'a>>> {
     match lexer.peek() {
-        None => Ok((None, lexer.advance()?)),
+        None => {
+            lexer.advance_mut()?;
+            Ok(None)
+        }
         Some(Token {
             location,
             lexeme: Lexeme::Identifier(name),
         }) => {
             /* check for keywords */
             if is_keyword(name) {
-                Ok((None, lexer))
+                Ok(None)
             } else {
-                Ok((Some(Identifier::new(name, location)), lexer.advance()?))
+                lexer.advance_mut()?;
+                Ok(Some(Identifier::new(name, location)))
             }
         }
-        Some(_) => Ok((None, lexer)),
+        Some(_) => Ok(None),
     }
 }
 
@@ -282,11 +286,11 @@ fn parse_predicate(lexer: Lexer) -> Result<(Option<Predicate>, Lexer), ParseErro
     }
 }
 
-fn parse_predicates(mut lexer: Lexer) -> Result<(Vec<Box<Predicate>>, Lexer), ParseError> {
+fn parse_predicates<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Vec<Box<Predicate<'a>>>> {
     let mut predicates = Vec::new();
     loop {
         match parse_predicate(lexer)? {
-            (None, lexer) => return Ok((predicates, lexer)),
+            (None, lexer) => return Ok(predicates),
             (Some(predicate), next_lexer) => {
                 println!(
                     "{}: found predicate {:?}",
@@ -472,15 +476,15 @@ fn parse_callsite<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Expr<'a>> {
     }
 }
 
-pub fn parse_decl(lexer: Lexer) -> Result<(Option<Decl>, Lexer), ParseError> {
-    let (id, lexer) = match maybe_id(lexer)? {
-        (Some(id), lexer) => (id, lexer),
-        (None, lexer) => return Ok((None, lexer)),
+pub fn parse_decl<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Option<Decl<'a>>> {
+    let id = match maybe_id(lexer)? {
+        Some(id) => id,
+        None => return Ok(None),
     };
-    let (predicates, lexer) = parse_predicates(lexer)?;
+    let predicates = parse_predicates(&mut lexer)?;
     println!("got done with predicates for {}", &id.name);
     lexer.chomp(Lexeme::Operator("="))?;
-    let (expr, lexer) = parse_callsite(lexer)?;
+    let expr = parse_callsite(&mut lexer)?;
     println!("{}: Found callsite {:?}", expr.get_location(), expr);
     Ok((
         Some({
