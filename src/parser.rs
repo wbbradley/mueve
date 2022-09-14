@@ -300,12 +300,15 @@ fn parse_predicates(mut lexer: Lexer) -> Result<(Vec<Box<Predicate>>, Lexer), Pa
     }
 }
 
-fn parse_identifier(lexer: Lexer) -> Result<(Identifier, Lexer), ParseError> {
+fn parse_identifier<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Identifier<'a>> {
     match lexer.peek() {
         Some(Token {
             location,
             lexeme: Lexeme::Identifier(name),
-        }) => Ok((Identifier::new(name, location), lexer.advance()?)),
+        }) => {
+            lexer.advance()?;
+            Ok(Identifier::new(name, location))
+        }
         _ => Err(ParseError::error(
             lexer.location,
             "expected an identifier here",
@@ -338,9 +341,9 @@ fn parse_match_expr<'a>(
 
 fn parse_let_expr<'a>(
     location: Location<'a>,
-    lexer: Lexer<'a>,
+    mut lexer: Lexer<'a>,
 ) -> Result<(Option<Box<Expr<'a>>>, Lexer<'a>), ParseError<'a>> {
-    let (binding_id, lexer) = parse_identifier(lexer)?;
+    let binding_id = parse_identifier(&mut lexer)?;
     lexer.chomp(Lexeme::Operator("="))?;
     let (binding_value, lexer) = parse_callsite(lexer)?;
     lexer.chomp(Lexeme::Identifier("in"))?;
