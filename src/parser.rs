@@ -227,7 +227,7 @@ fn parse_tuple_predicate<'a>(
     }))
 }
 
-fn parse_predicate<'a>(lexer: &mut Lexer) -> ParseResult<'a, Option<Predicate<'a>>> {
+fn parse_predicate<'a>(lexer: &'a mut Lexer) -> ParseResult<'a, Option<Predicate<'a>>> {
     match lexer.peek() {
         Some(token) => match token.lexeme {
             Lexeme::Signed(value) => {
@@ -438,17 +438,18 @@ fn parse_callsite_term<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Option<Box<
 
 fn parse_callsite<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Expr<'a>> {
     lexer.skip_semicolon()?;
-    let (maybe_function, new_lexer) = parse_callsite_term(*lexer)?;
+    let new_lexer = lexer.clone();
+    let maybe_function = parse_callsite_term(&mut new_lexer)?;
     *lexer = new_lexer;
 
     match maybe_function {
-        Some(function) => match parse_many(parse_callsite_term, *lexer)? {
-            (callsite_terms, lexer) => {
+        Some(function) => match parse_many(parse_callsite_term, lexer)? {
+            callsite_terms => {
                 if callsite_terms.len() == 0 {
                     Ok(*function)
                 } else {
                     Ok(Expr::Callsite {
-                        function: function,
+                        function,
                         arguments: callsite_terms,
                     })
                 }
@@ -471,38 +472,33 @@ pub fn parse_decl<'a>(lexer: &mut Lexer<'a>) -> ParseResult<'a, Option<Decl<'a>>
     lexer.chomp(Lexeme::Operator("="))?;
     let expr = parse_callsite(&mut lexer)?;
     println!("{}: Found callsite {:?}", expr.get_location(), expr);
-    Ok((
-        Some({
-            let decl = Decl {
-                id: id,
-                predicates: predicates,
-                body: expr,
-            };
-            println!("{}: found decl {:?}", decl.get_location(), decl);
-            decl
-        }),
-        lexer,
-    ))
+    Ok(Some({
+        let decl = Decl {
+            id,
+            predicates,
+            body: expr,
+        };
+        println!("{}: found decl {:?}", decl.get_location(), decl);
+        decl
+    }))
 }
 
-pub fn parse_many<'a, T, P>(
-    parser: P,
-    mut lexer: Lexer<'a>,
-) -> Result<(Vec<T>, Lexer<'a>), ParseError<'a>>
+pub fn parse_many<'a, T, P>(parser: P, lexer: &mut Lexer<'a>) -> Result<Vec<T>, ParseError<'a>>
 where
     T: 'a + std::fmt::Debug + HasLocation<'a>,
-    P: 'a + Fn(Lexer<'a>) -> Result<(Option<T>, Lexer<'a>), ParseError<'a>>,
+    P: 'a + Fn(&mut Lexer<'a>) -> Result<Option<T>, ParseError<'a>>,
 {
     let mut objects = Vec::new();
     loop {
-        match parser(lexer)? {
-            (Some(object), new_lexer) => {
-                lexer = new_lexer;
+        let new_lexer = lexer.clone();
+        match parser(&mut new_lexer)? {
+            Some(object) => {
+                *lexer = new_lexer;
                 // let loc = object.get_location();
                 // println!("{}: info: found a thing! {:?}", loc, object);
                 objects.push(object);
             }
-            (None, lexer) => return Ok((objects, lexer)),
+            None => return Ok(objects),
         }
     }
 }

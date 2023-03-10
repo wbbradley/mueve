@@ -39,18 +39,13 @@ fn run_real_compiler() -> bool {
 }
 
 fn compile<'a>(filename: &'a str, input: &'a str) -> bool {
-    let lexer = Lexer::new(filename, input);
-    match lexer.advance() {
-        Ok(lexer) => match parse_many(parse_decl, lexer) {
-            Ok((decls, _)) => {
-                println!("Parsed {:?}", decls);
-                true
-            }
-            Err(err) => {
-                eprintln!("{}", err);
-                false
-            }
-        },
+    let mut lexer = Lexer::new(filename, input);
+    lexer.advance();
+    match parse_many(parse_decl, &mut lexer) {
+        Ok(decls) => {
+            println!("Parsed {:?}", decls);
+            true
+        }
         Err(err) => {
             eprintln!("{}", err);
             false
